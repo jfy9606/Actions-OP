@@ -1,4 +1,4 @@
-name: mt798x-mtk-CI
+name: immortalwrt-mt798x-mtk-CI
 
 on:
   #schedule:
@@ -142,13 +142,13 @@ jobs:
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: mt798x-mtk_firmware
+          name: immortalwrt_mt798x-mtk_firmware
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/firmware
 
       - name: Upload Package Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: mt798x-mtk_packages
+          name: immortalwrt_mt798x-mtk_packages
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/package
 
       #- name: Upload release asset

@@ -5,7 +5,7 @@
 #
 # Copyright (C) 2020 KFERMercer
 #
-name: an75xx-CI
+name: immortalwrt-an75xx-CI
 
 on:
   #schedule:
@@ -149,13 +149,13 @@ jobs:
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: an75xx_firmware
+          name: immortalwrt_an75xx_firmware
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/firmware
 
       - name: Upload Package Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: an75xx_packages
+          name: immortalwrt_an75xx_packages
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/package
 
       #- name: Upload release asset
