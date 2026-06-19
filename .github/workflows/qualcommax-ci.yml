@@ -10,6 +10,11 @@ on:
         required: true
         default: "main-ipq"
         type: string
+      repo_token:
+        description: "GitHub PAT for private repo access (optional, uses GITHUB_TOKEN if empty)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -90,7 +95,7 @@ jobs:
       - name: Clone source code
         working-directory: /home/runner/work/Actions-OP/Actions-OP/workdir
         env:
-          REPO_URL: "https://${{ github.token }}@github.com/jfy9606/immortalwrt/"
+          REPO_URL: "https://x-access-token:${{ inputs.repo_token || github.token }}@github.com/jfy9606/immortalwrt/"
           REPO_BRANCH: "main-ipq"
         run: |
           df -hT $PWD
