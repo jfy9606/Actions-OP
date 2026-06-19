@@ -114,6 +114,10 @@ jobs:
           mixkey: 'cortex-a53'
           prefix: ${{ github.workspace }}/openwrt
 
+      - name: Configure git credential for private feeds
+        run: |
+          git config --global url."https://x-access-token:${{ env.REPO_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Update & Install feeds
         run: |
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds update -a
