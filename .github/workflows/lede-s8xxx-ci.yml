@@ -108,6 +108,11 @@ jobs:
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
+          cd openwrt
+          # Clean remote URL to remove embedded token (LLVM CMake rejects URLs with passwords)
+          git remote set-url origin https://github.com/jfy9606/lede/
+          # Set up credential helper for future git operations (feeds, etc.)
+          git config --global credential.helper "!f() { echo 'protocol=https'; echo 'host=github.com'; echo 'username=x-access-token'; echo 'password=${{ env.REPO_TOKEN }}'; }; f"
           ln -sf /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
       - name: Enable build ccache
@@ -123,6 +128,8 @@ jobs:
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds install -a
 
       - name: Generate and Compile Firmware for Each Configuration
+        env:
+          LLVM_FORCE_VC_REPOSITORY: "https://github.com/"
         run: |
           cd /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt
           for config in .github/menuconfig/s8xxx/menuconfig-*; do
