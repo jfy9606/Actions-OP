@@ -129,8 +129,6 @@ jobs:
 
       - name: Generate and Compile Firmware for Each Configuration
         env:
-          CARGO_BUILD_JOBS: 2
-          NINJA_FLAGS: "-j2"
           LLVM_FORCE_VC_REPOSITORY: "https://github.com/"
         run: |
           cd /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt
