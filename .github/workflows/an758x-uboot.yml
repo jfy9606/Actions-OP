@@ -1,0 +1,200 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (C) 2026 jfy9606
+#
+# All rights reserved.
+#
+# This file is part of the project bl-mt798x
+# You may not use, copy, modify or distribute this file except in compliance with the license agreement.
+#
+# Adapted from hurrian/w1700k-ubi-installer build-17xx.yaml (dual-board matrix)
+# and mt798x-uboot.yml (artifact/release style). Uses direct defconfig+make path
+# (no OpenWrt build system dependency).
+#
+name: an758x-uboot
+
+on:
+  repository_dispatch:
+    types: [an758x-uboot]
+  workflow_dispatch:
+    inputs:
+      MODEL:
+        description: 'Model selection (xr1710g, w1700k, or all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - xr1710g
+          - w1700k
+      REPO_URL:
+        description: 'Source repository'
+        required: true
+        default: 'https://github.com/jfy9606/uboot-op'
+        type: string
+      REPO_BRANCH:
+        description: 'Repository branch (an758x contains the http-uboot source tree)'
+        required: true
+        default: 'an758x'
+        type: string
+      pub_release:
+        description: 'Publish to GitHub Release'
+        required: false
+        default: 'true'
+        type: boolean
+      save_disk:
+        description: 'Free up disk space (build environment)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  TZ: Asia/Shanghai
+  REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
+  UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - model: xr1710g
+            defconfig: xr1710g_defconfig
+            artifact_name: u-boot-xr1710g.itb
+          - model: w1700k
+            defconfig: w1700k_defconfig
+            artifact_name: u-boot-w1700k.itb
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Clean disk space (local1)
+      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+
+    - name: Checkout source
+      if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
+      run: |
+        set -euo pipefail
+        sudo mkdir -p /workdir
+        sudo chown "$USER:$GROUPS" /workdir
+        cd /workdir
+        df -hT "$PWD"
+
+        REPO_URL_IN="${{ inputs.REPO_URL }}"
+        REPO_BRANCH_IN="${{ inputs.REPO_BRANCH }}"
+
+        if [ -n "$REPO_TOKEN" ]; then
+          REPO_URL_IN="$(echo "$REPO_URL_IN" | sed "s|https://|https://${REPO_TOKEN}@|")"
+        fi
+
+        echo "Using source: ${{ inputs.REPO_URL }} (ref: $REPO_BRANCH_IN)"
+        git clone --depth 1 --branch "$REPO_BRANCH_IN" "$REPO_URL_IN" bl-mt798x
+
+        SOURCE_SHA="$(git -C bl-mt798x rev-parse HEAD)"
+        echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+        echo "REPO_BRANCH=$REPO_BRANCH_IN" >> "$GITHUB_ENV"
+        ln -sf /workdir/bl-mt798x "$GITHUB_WORKSPACE/bl-mt798x"
+
+    - name: Initialize build environment
+      if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install \
+          gcc-aarch64-linux-gnu build-essential bc bison flex \
+          libssl-dev device-tree-compiler python3 python-is-python3 \
+          tar rename
+        sudo timedatectl set-timezone "$TZ"
+
+    - name: Clean disk space (local2)
+      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+
+    - name: Clean disk space (plugin)
+      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: true
+        android: false
+        dotnet: false
+        haskell: false
+        large-packages: false
+        swap-storage: false
+
+    - name: Build U-Boot for ${{ matrix.model }}
+      id: compile
+      if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
+      run: |
+        set -euo pipefail
+        cd bl-mt798x/example/http-uboot
+
+        echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        make ${{ matrix.defconfig }}
+        make -j"$(nproc)"
+
+        BUILD_TARGET="$(grep -E '^CONFIG_BUILD_TARGET=' .config | cut -d'"' -f2)"
+        if [ -z "$BUILD_TARGET" ]; then
+          BUILD_TARGET="u-boot.bin"
+        fi
+        echo "Build target: $BUILD_TARGET"
+
+        if [ ! -f "$BUILD_TARGET" ]; then
+          echo "Error: $BUILD_TARGET not found after build" >&2
+          ls -la u-boot* 2>/dev/null || true
+          exit 1
+        fi
+
+        mkdir -p output
+        cp "$BUILD_TARGET" "output/${{ matrix.artifact_name }}"
+
+        echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      with:
+        name: ${{ env.FILE_DATE }}-an758x-${{ matrix.model }}
+        path: bl-mt798x/example/http-uboot/output/*
+        retention-days: 30
+
+    - name: Generate release notes
+      id: tag
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        touch release.txt
+        echo "- Commit: ${{ env.SOURCE_SHA }}" >> release.txt
+        echo "- Model: ${{ matrix.model }}" >> release.txt
+        echo "- Defconfig: ${{ matrix.defconfig }}" >> release.txt
+        echo "- Source: ${{ inputs.REPO_URL }} (branch: ${{ env.REPO_BRANCH }})" >> release.txt
+        echo "- Build time: ${{ env.FILE_DATE }}" >> release.txt
+        echo "" >> release.txt
+        echo "---" >> release.txt
+        echo "" >> release.txt
+        echo "**AN7581 SoC dual-board U-Boot build (XR1710G / W1700K).**" >> release.txt
+        echo "release_tag=${{ env.FILE_DATE }}-an758x-${{ matrix.model }}" >> "$GITHUB_OUTPUT"
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: Publish to GitHub Release
+      uses: softprops/action-gh-release@v3
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        files: bl-mt798x/example/http-uboot/output/*
+        name: ${{ env.FILE_DATE }}-an758x-${{ matrix.model }}
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
