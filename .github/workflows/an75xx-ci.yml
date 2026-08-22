@@ -1,4 +1,4 @@
-# 
+#
 # <https://github.com/KFERMercer/OpenWrt-CI>
 #
 # Copyright (C) 2019 P3TERX
@@ -57,7 +57,7 @@ jobs:
       matrix:
         config: ${{ fromJson(needs.prepare.outputs.matrix) }}
       fail-fast: false
-    runs-on: ubuntu-24.04 
+    runs-on: ubuntu-24.04
 
     steps:
 
@@ -96,7 +96,7 @@ jobs:
 
       - name: Freeing up disk space
         uses: easimon/maximize-build-space@master
-        with: 
+        with:
           root-reserve-mb: 2048
           swap-size-mb: 1024
           remove-dotnet: 'true'
