@@ -130,6 +130,65 @@ jobs:
       contents: write
 
     steps:
+    - name: Check Server Performance
+      run: |
+        echo -e "已知CPU型号（降序）：7763，8370C，8272CL，8171M，E5-2673 \n"
+        echo "--------------------------CPU信息--------------------------"
+        echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo "--------------------------内存信息--------------------------"
+        echo "已安装内存详细信息："
+        echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+    - name: "Optimize Disk Space"
+      uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.1"
+      with:
+       operate_sudo: "True"
+       general_include: ".+"
+       general_exclude: |-
+         ^GCC$
+         ^G\+\+$
+         Clang
+         LLVM
+       docker_include: ".+"
+       docker_prune: "True"
+       docker_clean: "True"
+       apt_prune: "True"
+       apt_clean: "True"
+       homebrew_prune: "True"
+       homebrew_clean: "True"
+       npm_prune: "True"
+       npm_clean: "True"
+       os_swap: "False"
+
+    - name: Freeing up disk space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 2048
+        swap-size-mb: 8192
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+
+    - name: Space cleanup and Initialization environment
+      env:
+         DEBIAN_FRONTEND: noninteractive
+      run: |
+         sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
+         sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
+         sudo -E apt -qq update
+         sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
+         sudo -E apt -qq -y full-upgrade
+         sudo -E apt -qq install -y build-essential ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 tar rename
+         sudo -E systemctl daemon-reload
+         sudo -E apt -qq -y autoremove --purge
+         sudo -E apt -qq autoclean
+         sudo -E timedatectl set-timezone "Asia/Shanghai"
+
     - name: Configuration check
       shell: bash
       run: |
@@ -224,12 +283,6 @@ jobs:
           echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
         fi
 
-    - name: Clean disk space (local1)
-      if: github.event.inputs.save_disk == 'true' && !cancelled()
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
 
     - name: Checkout source
       run: |
@@ -262,40 +315,6 @@ jobs:
         echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
         ln -sf /workdir/bl-mt798x $GITHUB_WORKSPACE/bl-mt798x
 
-    - name: Initialize build environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install $(cat $GITHUB_WORKSPACE/bl-mt798x/depends/${{ matrix.os }})
-        sudo -E apt-get -qq install rename tar
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-
-    - name: Clean disk space (local2)
-      if: github.event.inputs.save_disk == 'true' && !cancelled()
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-
-    - name: Clean disk space (plugin)
-      if: github.event.inputs.save_disk == 'true' && !cancelled()
-      uses: jlumbroso/free-disk-space@main
-      with:
-        # this might remove tools that are actually needed,
-        # when set to "true" but frees about 6 GB
-        tool-cache: true
-        
-        # all of these default to true, but feel free to set to
-        # "false" if necessary for your workflow
-        android: false
-        dotnet: false
-        haskell: false
-        large-packages: false
-        swap-storage: false
 
     - name: SSH connection management
       uses: P3TERX/ssh2actions@v1.0.0
@@ -498,9 +517,26 @@ jobs:
         echo "MODEL_LIST_DIR=$PWD/model_lists" >> $GITHUB_ENV
         echo "MODEL_LIST_READY=1" >> $GITHUB_ENV
 
+    - name: Enable ccache
+      run: |
+        mkdir -p $HOME/.ccache/bin
+        ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-gcc
+        ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-g++
+        echo "PATH=$HOME/.ccache/bin:$PATH" >> $GITHUB_ENV
+        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-mt798x-${{ matrix.os }}-${{ github.sha }}
+        restore-keys: |
+          ccache-mt798x-${{ matrix.os }}-
+
     - name: Build FIP
       id: compile
       run: |
+        export CROSS_COMPILE="ccache aarch64-linux-gnu-"
         cd bl-mt798x
         mkdir -p output
 

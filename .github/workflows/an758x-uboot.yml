@@ -40,7 +40,7 @@ on:
       pub_release:
         description: 'Publish to GitHub Release'
         required: false
-        default: 'true'
+        default: 'false'
         type: boolean
       save_disk:
         description: 'Free up disk space (build environment)'
@@ -70,12 +70,64 @@ jobs:
       contents: write
 
     steps:
-    - name: Clean disk space (local1)
-      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
-      env:
-        DEBIAN_FRONTEND: noninteractive
+    - name: Check Server Performance
       run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        echo -e "已知CPU型号（降序）：7763，8370C，8272CL，8171M，E5-2673 \n"
+        echo "--------------------------CPU信息--------------------------"
+        echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo "--------------------------内存信息--------------------------"
+        echo "已安装内存详细信息："
+        echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+    - name: "Optimize Disk Space"
+      uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.1"
+      with:
+       operate_sudo: "True"
+       general_include: ".+"
+       general_exclude: |-
+         ^GCC$
+         ^G\+\+$
+         Clang
+         LLVM
+       docker_include: ".+"
+       docker_prune: "True"
+       docker_clean: "True"
+       apt_prune: "True"
+       apt_clean: "True"
+       homebrew_prune: "True"
+       homebrew_clean: "True"
+       npm_prune: "True"
+       npm_clean: "True"
+       os_swap: "False"
+
+    - name: Freeing up disk space
+      uses: easimon/maximize-build-space@master
+      with:
+        root-reserve-mb: 2048
+        swap-size-mb: 8192
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+
+    - name: Space cleanup and Initialization environment
+      env:
+         DEBIAN_FRONTEND: noninteractive
+      run: |
+         sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
+         sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
+         sudo -E apt -qq update
+         sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
+         sudo -E apt -qq -y full-upgrade
+         sudo -E apt -qq install -y build-essential ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 tar rename
+         sudo -E systemctl daemon-reload
+         sudo -E apt -qq -y autoremove --purge
+         sudo -E apt -qq autoclean
+         sudo -E timedatectl set-timezone "Asia/Shanghai"
 
     - name: Checkout source
       if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
@@ -101,36 +153,22 @@ jobs:
         echo "REPO_BRANCH=$REPO_BRANCH_IN" >> "$GITHUB_ENV"
         ln -sf /workdir/bl-mt798x "$GITHUB_WORKSPACE/bl-mt798x"
 
-    - name: Initialize build environment
-      if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install \
-          gcc-aarch64-linux-gnu build-essential bc bison flex \
-          libssl-dev device-tree-compiler python3 python-is-python3 \
-          tar rename
-        sudo timedatectl set-timezone "$TZ"
 
-    - name: Clean disk space (local2)
-      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
-      env:
-        DEBIAN_FRONTEND: noninteractive
+    - name: Enable ccache
       run: |
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
+        mkdir -p $HOME/.ccache/bin
+        ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-gcc
+        ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-g++
+        echo "PATH=$HOME/.ccache/bin:$PATH" >> $GITHUB_ENV
+        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
 
-    - name: Clean disk space (plugin)
-      if: github.event.inputs.save_disk == 'true' && !cancelled() && ((github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model)
-      uses: jlumbroso/free-disk-space@main
+    - name: Cache ccache
+      uses: actions/cache@v4
       with:
-        tool-cache: true
-        android: false
-        dotnet: false
-        haskell: false
-        large-packages: false
-        swap-storage: false
+        path: ~/.ccache
+        key: ccache-an758x-${{ matrix.model }}-${{ github.sha }}
+        restore-keys: |
+          ccache-an758x-${{ matrix.model }}-
 
     - name: Build U-Boot for ${{ matrix.model }}
       id: compile
@@ -141,7 +179,7 @@ jobs:
 
         echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
         export ARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE="ccache aarch64-linux-gnu-"
         make ${{ matrix.defconfig }}
         make -j"$(nproc)"
 
@@ -164,12 +202,11 @@ jobs:
         echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
-        name: ${{ env.FILE_DATE }}-an758x-${{ matrix.model }}
+        name: an758x_uboot_firmware
         path: bl-mt798x/example/http-uboot/output/*
-        retention-days: 30
 
     - name: Generate release notes
       id: tag
