@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project bl-mt798x
+# This file is part of the project uboot-op
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 name: mt798x-uboot
@@ -116,11 +116,7 @@ env:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-          matrix:
-            os:
-              - ubuntu-22.04
+    runs-on: ubuntu-22.04
 
     permissions:
       contents: write
@@ -273,12 +269,12 @@ jobs:
         fi
 
         echo "Using source: $REPO_URL (ref: $REPO_REF)"
-        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" bl-mt798x
+        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" uboot-op
 
-        SOURCE_SHA="$(git -C bl-mt798x rev-parse HEAD)"
+        SOURCE_SHA="$(git -C uboot-op rev-parse HEAD)"
         echo "REPO_BRANCH=$REPO_REF" >> "$GITHUB_ENV"
         echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
-        ln -sf /workdir/bl-mt798x $GITHUB_WORKSPACE/bl-mt798x
+        ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
 
 
     - name: SSH connection management
@@ -292,7 +288,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        cd bl-mt798x
+        cd uboot-op
 
         # Create minimal .config in u-boot dir for kconfig tool build
         # (u-boot build system requires .config to exist)
@@ -432,7 +428,7 @@ jobs:
     - name: Parse model lists
       run: |
         set -euo pipefail
-        cd bl-mt798x
+        cd uboot-op
         mkdir -p model_lists
 
         FIP_INPUT="$FIP_VERSION_INPUT"
@@ -494,15 +490,15 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ccache-mt798x-${{ matrix.os }}-${{ github.sha }}
+        key: ccache-mt798x-${{ github.sha }}
         restore-keys: |
-          ccache-mt798x-${{ matrix.os }}-
+          ccache-mt798x-
 
     - name: Build FIP
       id: compile
       run: |
         export CROSS_COMPILE="ccache aarch64-linux-gnu-"
-        cd bl-mt798x
+        cd uboot-op
         mkdir -p output
 
         FIP_INPUT="$FIP_VERSION_INPUT"
@@ -662,7 +658,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: | 
-        cd bl-mt798x
+        cd uboot-op
         # Get current timestamp
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
         # Mark custom subnet (append _customnet suffix, then timestamp)
@@ -711,7 +707,7 @@ jobs:
       with:
         name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
         path: |
-          bl-mt798x/upload/*
+          uboot-op/upload/*
 
     - name: Generate release notes
       id: tag
@@ -785,7 +781,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: bl-mt798x/upload/*
+        files: uboot-op/upload/*
         name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt

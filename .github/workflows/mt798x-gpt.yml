@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project bl-mt798x
+# This file is part of the project uboot-op
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 name: mt798x-gpt
@@ -91,8 +91,8 @@ jobs:
           else
             REPO_URL_AUTH="$REPO_URL"
           fi
-          git clone $REPO_URL_AUTH -b $REPO_BRANCH bl-mt798x
-          ln -sf /workdir/bl-mt798x $GITHUB_WORKSPACE/bl-mt798x
+          git clone $REPO_URL_AUTH -b $REPO_BRANCH uboot-op
+          ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
 
           if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
             echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd bl-mt798x
+          cd uboot-op
 
           # Generate .config for GPT build
           echo "# CONFIG_BUILD_FIP is not set" > .config
@@ -125,7 +125,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd bl-mt798x
+          cd uboot-op
 
           if [ "$CONFIG_GPT_TEMPLATE" = "true" ]; then
             if [ -d "mt798x_gpt/template" ]; then
@@ -160,7 +160,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd bl-mt798x
+          cd uboot-op
           chmod +x ./generate_gpt.sh
           # Use make build target
           make build 2>&1
@@ -173,7 +173,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd bl-mt798x
+          cd uboot-op
 
           TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
@@ -200,7 +200,7 @@ jobs:
         with:
           name: ${{ env.FILE_DATE }}-gpt-partition-table
           path: |
-            bl-mt798x/upload/*
+            uboot-op/upload/*
 
       - name: Generate release notes
         id: tag
@@ -233,7 +233,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: bl-mt798x/upload/*
+          files: uboot-op/upload/*
           release_name: ${{ env.FILE_DATE }}-gpt-partition-table
           name: ${{ env.FILE_DATE }}-gpt-partition-table
           tag_name: ${{ steps.tag.outputs.release_tag }}

@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project bl-mt798x
+# This file is part of the project uboot-op
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 # Adapted from hurrian/w1700k-ubi-installer build-17xx.yaml (dual-board matrix)
@@ -111,12 +111,12 @@ jobs:
         fi
 
         echo "Using source: ${{ inputs.REPO_URL }} (ref: $REPO_BRANCH_IN)"
-        git clone --depth 1 --branch "$REPO_BRANCH_IN" "$REPO_URL_IN" bl-mt798x
+        git clone --depth 1 --branch "$REPO_BRANCH_IN" "$REPO_URL_IN" uboot-op
 
-        SOURCE_SHA="$(git -C bl-mt798x rev-parse HEAD)"
+        SOURCE_SHA="$(git -C uboot-op rev-parse HEAD)"
         echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
         echo "REPO_BRANCH=$REPO_BRANCH_IN" >> "$GITHUB_ENV"
-        ln -sf /workdir/bl-mt798x "$GITHUB_WORKSPACE/bl-mt798x"
+        ln -sf /workdir/uboot-op "$GITHUB_WORKSPACE/uboot-op"
 
 
     - name: Enable ccache
@@ -140,7 +140,7 @@ jobs:
       if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
       run: |
         set -euo pipefail
-        cd bl-mt798x/example/http-uboot
+        cd uboot-op
 
         echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
         export ARCH=arm64
@@ -171,7 +171,7 @@ jobs:
       if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
         name: an758x_uboot_firmware
-        path: bl-mt798x/example/http-uboot/output/*
+        path: uboot-op/output/*
 
     - name: Generate release notes
       id: tag
@@ -196,7 +196,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: bl-mt798x/example/http-uboot/output/*
+        files: uboot-op/output/*
         name: ${{ env.FILE_DATE }}-an758x-${{ matrix.model }}
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
