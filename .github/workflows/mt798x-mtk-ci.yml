@@ -10,6 +10,11 @@ on:
         required: true
         default: "main-mtk"
         type: string
+      target:
+        description: "Config to build (name without 'menuconfig-' prefix, or 'all')"
+        required: true
+        default: "all"
+        type: string
 
 env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
@@ -19,9 +24,44 @@ permissions:
 
 jobs:
 
+  prepare:
+    name: Prepare Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Clone source code (shallow)
+        env:
+          REPO_URL: "https://x-access-token:${{ env.REPO_TOKEN }}@github.com/jfy9606/immortalwrt/"
+          REPO_BRANCH: ${{ inputs.branch }}
+        run: |
+          git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" /tmp/openwrt
+      - id: set-matrix
+        run: |
+          TARGET="${{ inputs.target }}"
+          if [ "$TARGET" = "all" ]; then
+            configs=""
+            for f in /tmp/openwrt/.github/menuconfig/mt798x/menuconfig-*; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f" | sed 's/menuconfig-//')
+              configs="$configs,\"$name\""
+            done
+            configs="${configs:1}"
+            echo "matrix=[$configs]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=[\"$TARGET\"]" >> $GITHUB_OUTPUT
+          fi
+
   build_openwrt:
-    name: Build OpenWrt Firmware
+    name: Build ${{ matrix.config }}
+    needs: prepare
+    if: needs.prepare.outputs.matrix != '[]'
+    strategy:
+      matrix:
+        config: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false
     runs-on: ubuntu-24.04
+
     steps:
 
       - name: Check Server Performance
@@ -59,7 +99,7 @@ jobs:
 
       - name: Freeing up disk space
         uses: easimon/maximize-build-space@master
-        with:
+        with: 
           root-reserve-mb: 2048
           swap-size-mb: 8192
           remove-dotnet: 'true'
@@ -109,7 +149,7 @@ jobs:
         uses: stupidloud/cachewrtbuild@main
         with:
           ccache: 'true'
-          mixkey: 'cortex-a53'
+          mixkey: 'cortex-a53-${{ matrix.config }}'
           prefix: ${{ github.workspace }}/openwrt
 
       - name: Update & Install feeds
@@ -117,30 +157,29 @@ jobs:
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds update -a
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds install -a
 
-      - name: Generate and Compile Firmware for Each Configuration
+      - name: Generate and Compile Firmware
         env:
           LLVM_FORCE_VC_REPOSITORY: "https://github.com/"
         run: |
           cd /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt
-          for config in .github/menuconfig/mt798x/menuconfig-*; do
-            CONFIG_NAME=$(basename $config)
-            echo "======================================="
-            echo "Building with configuration: $CONFIG_NAME"
-            echo "======================================="
+          CONFIG_NAME="menuconfig-${{ matrix.config }}"
+          echo "======================================="
+          echo "Building with configuration: $CONFIG_NAME"
+          echo "======================================="
 
-            cp -f "$config" .config
-            make defconfig
-            make download -j16
-            make -j$(nproc) || make -j1 || make -j1 V=s
+          cp -f ".github/menuconfig/mt798x/$CONFIG_NAME" .config
+          make defconfig
+          make download -j16
+          make -j$(nproc) || make -j1 || make -j1 V=s
 
-            echo "======================="
-            echo "Space usage after build ($CONFIG_NAME):"
-            echo "======================="
-            df -h
-            du -h --max-depth=1 ./ --exclude=build_dir --exclude=bin
-            du -h --max-depth=1 ./build_dir
-            du -h --max-depth=1 ./bin
-          done
+          echo "======================="
+          echo "Space usage after build ($CONFIG_NAME):"
+          echo "======================="
+          df -h
+          du -h --max-depth=1 ./ --exclude=build_dir --exclude=bin
+          du -h --max-depth=1 ./build_dir
+          du -h --max-depth=1 ./bin
+
           ARTIFACT_DIR="./artifact"
           mkdir -p "$ARTIFACT_DIR/firmware"
           mkdir -p "$ARTIFACT_DIR/package"
@@ -152,13 +191,13 @@ jobs:
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: immortalwrt_mt798x-mtk_firmware
+          name: immortalwrt_mt798x-mtk_firmware_${{ matrix.config }}
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/firmware
 
       - name: Upload Package Artifacts
         uses: actions/upload-artifact@main
         with:
-          name: immortalwrt_mt798x-mtk_packages
+          name: immortalwrt_mt798x-mtk_packages_${{ matrix.config }}
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/package
 
       #- name: Upload release asset
