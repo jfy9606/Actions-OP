@@ -90,7 +90,7 @@ jobs:
          sudo -E apt -qq update
          sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
          sudo -E apt -qq -y full-upgrade
-         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename u-boot-tools
+         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename
          sudo -E systemctl daemon-reload
          sudo -E apt -qq -y autoremove --purge
          sudo -E apt -qq autoclean
@@ -164,14 +164,8 @@ jobs:
         fi
 
         if [ "${{ matrix.needs_slot }}" = "true" ]; then
-          echo "=== Downloading upstream slot image for extraction ==="
-          UPSTREAM_TAG=$(gh release list -R YYH2913/http-uboot -L 50 --json tagName -q '[.[] | select(.tagName | startswith("xr1710g"))] | .[0].tagName')
-          echo "Upstream release: $UPSTREAM_TAG"
-          gh release download "$UPSTREAM_TAG" -R YYH2913/http-uboot -p "xr1710g-chainloader-slot.bin" -D /tmp/
-
           echo "=== Repackaging slot image with local u-boot.bin ==="
           ./chainloader/build-xr1710g-slot.sh \
-            /tmp/xr1710g-chainloader-slot.bin \
             "$BUILD_TARGET" \
             "../output/${{ matrix.artifact_name }}"
         else
@@ -180,8 +174,6 @@ jobs:
 
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@main
