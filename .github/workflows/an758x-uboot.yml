@@ -33,9 +33,9 @@ on:
         default: 'https://github.com/jfy9606/uboot-op'
         type: string
       REPO_BRANCH:
-        description: 'Repository branch (an758x contains the http-uboot source tree)'
+        description: 'Repository branch (main contains the unified U-Boot source tree)'
         required: true
-        default: 'an758x'
+        default: 'main'
         type: string
       pub_release:
         description: 'Publish to GitHub Release'
@@ -163,20 +163,22 @@ jobs:
           exit 1
         fi
 
-        if [ "${{ matrix.needs_slot }}" = "true" ]; then
-          echo "=== Repackaging slot image with local u-boot.bin ==="
-          ./chainloader/build-xr1710g-slot.sh \
-            "$BUILD_TARGET" \
-            "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
-        else
-          echo "=== Building w1700k FIT image (.itb) with LZMA compression ==="
-          if [ ! -f "u-boot.dtb" ]; then
-            echo "Error: u-boot.dtb not found after build" >&2
-            exit 1
-          fi
-          ./chainloader/build-w1700k-itb.sh \
+        if [ "${{ matrix.needs_slot }}" = "false" ] && [ ! -f "u-boot.dtb" ]; then
+          echo "Error: u-boot.dtb not found after build" >&2
+          exit 1
+        fi
+
+        echo "=== Building ${{ matrix.model }} image via unified script ==="
+        if [ "${{ matrix.needs_slot }}" = "false" ]; then
+          ./chainloader/build-uboot-image.sh \
+            "${{ matrix.model }}" \
             "$BUILD_TARGET" \
             "u-boot.dtb" \
+            "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
+        else
+          ./chainloader/build-uboot-image.sh \
+            "${{ matrix.model }}" \
+            "$BUILD_TARGET" \
             "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
         fi
 
