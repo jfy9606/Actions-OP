@@ -17,9 +17,15 @@ on:
         required: true
         default: "main"
         type: string
+      pub_release:
+        description: "Publish to GitHub Release"
+        required: false
+        default: 'true'
+        type: boolean
 
 env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
+  UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 permissions:
   contents: read
@@ -171,11 +177,23 @@ jobs:
           name: lede_s8xxx_packages
           path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/package
 
-      #- name: Upload release asset
-      #  if: github.event == 'release'
-      #  uses: svenstaro/upload-release-action@v4
-      #  with:
-      #    repo_token: ${{ secrets.YOURTOKEN }}
-      #    file: ./artifact/firmware/*
-      #    tag: ${{ github.ref }}
-      #    file_glob: true
+      - name: Publish to Private Repo Release
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        env:
+          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+        run: |
+          set -euo pipefail
+          RELEASE_REPO="${RELEASE_REPO:-jfy9606/lede}"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "REPO_TOKEN not set, skipping"
+            exit 0
+          fi
+          FILE_DATE=$(TZ=Asia/Shanghai date +"%Y.%m.%d-%H%M")
+          TAG="${FILE_DATE}-lede-s8xxx"
+          echo "Publishing to $RELEASE_REPO release $TAG"
+          gh release create "$TAG" \
+            --repo "$RELEASE_REPO" \
+            --title "$TAG" \
+            --notes "Auto-built lede s8xxx firmware from commit ${{ github.sha }}" \
+            "$GITHUB_WORKSPACE/openwrt/artifact/firmware/"*

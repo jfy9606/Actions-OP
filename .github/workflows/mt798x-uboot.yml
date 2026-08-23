@@ -775,13 +775,23 @@ jobs:
         echo "release_tag=${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Publish to GitHub Release
-      uses: softprops/action-gh-release@v3
+    - name: Publish to Private Repo Release
       if: steps.tag.outputs.status == 'success' && !cancelled() && env.UPLOAD_RELEASE == 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        files: uboot-op/upload/*
-        name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
+        GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+        RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+      run: |
+        set -euo pipefail
+        RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
+        if [ -z "$GH_TOKEN" ]; then
+          echo "REPO_TOKEN secret not set, skipping publish"
+          exit 0
+        fi
+        TAG="${{ steps.tag.outputs.release_tag }}"
+        TITLE="${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}"
+        echo "Publishing to $RELEASE_REPO release $TAG"
+        gh release create "$TAG" \
+          --repo "$RELEASE_REPO" \
+          --title "$TITLE" \
+          --notes-file release.txt \
+          uboot-op/upload/*

@@ -206,10 +206,7 @@ jobs:
         RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
       run: |
         set -euo pipefail
-        if [ -z "$RELEASE_REPO" ]; then
-          echo "RELEASE_REPO secret not set, skipping publish"
-          exit 0
-        fi
+        RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
         if [ -z "$GH_TOKEN" ]; then
           echo "REPO_TOKEN secret not set, skipping publish"
           exit 0
