@@ -46,7 +46,7 @@ on:
 
 env:
   TZ: Asia/Shanghai
-  REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
+  REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
   UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 jobs:
@@ -57,14 +57,12 @@ jobs:
         include:
           - model: xr1710g
             defconfig: xr1710g_defconfig
-            artifact_name: u-boot-xr1710g.itb
-            fdt_description: "ARM64 OpenWrt econet_xr1710g-ubi device tree blob"
-            config_description: "OpenWrt econet_xr1710g-ubi"
+            artifact_name: xr1710g-chainloader-slot.bin
+            needs_slot: true
           - model: w1700k
             defconfig: w1700k_defconfig
-            artifact_name: u-boot-w1700k.itb
-            fdt_description: "ARM64 OpenWrt gemtek_w1700k-ubi device tree blob"
-            config_description: "OpenWrt gemtek_w1700k-ubi"
+            artifact_name: u-boot-w1700k.bin
+            needs_slot: false
 
     permissions:
       contents: write
@@ -92,7 +90,7 @@ jobs:
          sudo -E apt -qq update
          sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
          sudo -E apt -qq -y full-upgrade
-         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename
+         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename u-boot-tools
          sudo -E systemctl daemon-reload
          sudo -E apt -qq -y autoremove --purge
          sudo -E apt -qq autoclean
@@ -144,6 +142,7 @@ jobs:
       if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
       run: |
         set -euo pipefail
+        mkdir -p output
         cd uboot-op
 
         echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
@@ -152,78 +151,44 @@ jobs:
         make ${{ matrix.defconfig }}
         make -j"$(nproc)"
 
-        if [ ! -f "u-boot.bin" ] || [ ! -f "u-boot.dtb" ]; then
-          echo "Error: u-boot.bin or u-boot.dtb not found after build" >&2
+        BUILD_TARGET="$(grep -E '^CONFIG_BUILD_TARGET=' .config | cut -d'"' -f2)"
+        if [ -z "$BUILD_TARGET" ]; then
+          BUILD_TARGET="u-boot.bin"
+        fi
+        echo "Build target: $BUILD_TARGET"
+
+        if [ ! -f "$BUILD_TARGET" ]; then
+          echo "Error: $BUILD_TARGET not found after build" >&2
           ls -la u-boot* 2>/dev/null || true
           exit 1
         fi
 
-        echo "=== LZMA compress u-boot.bin ==="
-        lzma -k -9 u-boot.bin
-        ls -la u-boot.bin u-boot.bin.lzma u-boot.dtb
+        if [ "${{ matrix.needs_slot }}" = "true" ]; then
+          echo "=== Downloading upstream slot image for extraction ==="
+          UPSTREAM_TAG=$(gh release list -R YYH2913/http-uboot -L 50 --json tagName -q '[.[] | select(.tagName | startswith("xr1710g"))] | .[0].tagName')
+          echo "Upstream release: $UPSTREAM_TAG"
+          gh release download "$UPSTREAM_TAG" -R YYH2913/http-uboot -p "xr1710g-chainloader-slot.bin" -D /tmp/
 
-        echo "=== Generate FIT image (.itb) ==="
-        mkdir -p fit-pack
-        cp u-boot.bin.lzma u-boot.dtb fit-pack/
-
-        DEVICE_NAME="${{ matrix.model }}"
-        cat > fit-pack/u-boot.its << ITS_EOF
-        /dts-v1/;
-        / {
-          description = "ARM64 OpenWrt FIT (Flattened Image Tree)";
-          #address-cells = <1>;
-          images {
-            kernel-1 {
-              description = "ARM64 OpenWrt Linux-u-boot";
-              data = /incbin/("u-boot.bin.lzma");
-              type = "kernel";
-              arch = "arm64";
-              os = "linux";
-              compression = "lzma";
-              load = <0x80200000>;
-              entry = <0x80200000>;
-              hash-1 { algo = "crc32"; };
-              hash-2 { algo = "sha1"; };
-            };
-            fdt-1 {
-              description = "${{ matrix.fdt_description }}";
-              data = /incbin/("u-boot.dtb");
-              type = "flat_dt";
-              load = <0x82000000>;
-              arch = "arm64";
-              compression = "none";
-              hash-1 { algo = "crc32"; };
-              hash-2 { algo = "sha1"; };
-            };
-          };
-          configurations {
-            default = "conf-uboot";
-            conf-uboot {
-              description = "${{ matrix.config_description }}";
-              kernel = "kernel-1";
-              fdt = "fdt-1";
-            };
-          };
-        };
-        ITS_EOF
-
-        cd fit-pack
-        ../tools/mkimage -f u-boot.its "${{ matrix.artifact_name }}"
-        ../tools/dumpimage -l "${{ matrix.artifact_name }}"
-        cd ..
-
-        mkdir -p output
-        cp "fit-pack/${{ matrix.artifact_name }}" "output/${{ matrix.artifact_name }}"
+          echo "=== Repackaging slot image with local u-boot.bin ==="
+          ./chainloader/build-xr1710g-slot.sh \
+            /tmp/xr1710g-chainloader-slot.bin \
+            "$BUILD_TARGET" \
+            "../output/${{ matrix.artifact_name }}"
+        else
+          cp "$BUILD_TARGET" "../output/${{ matrix.artifact_name }}"
+        fi
 
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
         name: an758x_uboot_firmware
-        path: uboot-op/output/*
+        path: output/*
 
     - name: Generate release notes
       id: tag
@@ -248,7 +213,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        files: uboot-op/output/*
+        files: output/*
         name: ${{ env.FILE_DATE }}-an758x-${{ matrix.model }}
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
