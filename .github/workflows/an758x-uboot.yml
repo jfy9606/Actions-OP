@@ -142,7 +142,7 @@ jobs:
       if: (github.event.inputs.MODEL || 'all') == 'all' || (github.event.inputs.MODEL || 'all') == matrix.model
       run: |
         set -euo pipefail
-        mkdir -p output
+        mkdir -p "$GITHUB_WORKSPACE/output"
         cd uboot-op
 
         echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
@@ -167,9 +167,9 @@ jobs:
           echo "=== Repackaging slot image with local u-boot.bin ==="
           ./chainloader/build-xr1710g-slot.sh \
             "$BUILD_TARGET" \
-            "../output/${{ matrix.artifact_name }}"
+            "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
         else
-          cp "$BUILD_TARGET" "../output/${{ matrix.artifact_name }}"
+          cp "$BUILD_TARGET" "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
         fi
 
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
