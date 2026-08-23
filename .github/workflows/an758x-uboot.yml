@@ -179,7 +179,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
-        name: an758x_uboot_firmware
+        name: an758x_uboot_firmware_${{ matrix.model }}
         path: output/*
 
     - name: Generate release notes
