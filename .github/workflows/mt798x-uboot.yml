@@ -99,7 +99,7 @@ env:
   UPLOAD_TAG_NAME: ${{ github.event.inputs.MODEL }}
   REPO_URL: ${{ github.event.inputs.REPO_URL }}
   REPO_BRANCH_INPUT: ${{ github.event.inputs.REPO_BRANCH }}
-  REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
   FIP_VERSION_INPUT: ${{ github.event.inputs.FIP_VERSION || github.event.client_payload.FIP_VERSION || '2025' }}
   SSH_ACTIONS: false
   UPLOAD_FIRMWARE: true
@@ -778,7 +778,7 @@ jobs:
     - name: Publish to Private Repo Release
       if: steps.tag.outputs.status == 'success' && !cancelled() && env.UPLOAD_RELEASE == 'true'
       env:
-        GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+        GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
         RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
       run: |
         set -euo pipefail

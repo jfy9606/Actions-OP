@@ -46,7 +46,7 @@ on:
 
 env:
   TZ: Asia/Shanghai
-  REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
   UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 jobs:
@@ -212,7 +212,7 @@ jobs:
     - name: Publish to Private Repo Release
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
-        GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+        GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
         RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
       run: |
         set -euo pipefail

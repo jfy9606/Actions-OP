@@ -23,7 +23,7 @@ on:
         type: boolean
 
 env:
-  REPO_TOKEN: ${{ secrets.REPO_TOKEN || github.token }}
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
   UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 permissions:
@@ -213,7 +213,7 @@ jobs:
       - name: Publish to Private Repo Release
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         env:
-          GH_TOKEN: ${{ secrets.REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
           RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
         run: |
           set -euo pipefail
