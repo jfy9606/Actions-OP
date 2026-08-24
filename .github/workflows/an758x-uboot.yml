@@ -61,8 +61,8 @@ jobs:
             needs_slot: true
           - model: w1700k
             defconfig: w1700k_defconfig
-            artifact_name: w1700k-chainloader-slot.bin
-            needs_slot: true
+            artifact_name: u-boot-w1700k.itb
+            needs_slot: false
 
     permissions:
       contents: write
