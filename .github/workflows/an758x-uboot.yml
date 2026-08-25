@@ -37,17 +37,11 @@ on:
         required: true
         default: 'main'
         type: string
-      pub_release:
-        description: 'Publish to GitHub Release'
-        required: false
-        default: 'false'
-        type: boolean
 
 
 env:
   TZ: Asia/Shanghai
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
-  UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 jobs:
   build:
@@ -185,16 +179,9 @@ jobs:
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && !cancelled()
-      with:
-        name: an758x_uboot_firmware_${{ matrix.model }}
-        path: output/*
-
     - name: Generate release notes
       id: tag
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
         touch release.txt
         echo "- Commit: ${{ env.SOURCE_SHA }}" >> release.txt

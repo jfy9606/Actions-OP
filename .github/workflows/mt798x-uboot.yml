@@ -87,11 +87,6 @@ on:
         required: false
         default: 'false'
 
-      pub_release:
-        description: 'Publish to GitHub Release'
-        required: false
-        default: 'true'
-        type: boolean
 #  schedule:
 #    - cron: 0 16 * * *
 
@@ -102,8 +97,6 @@ env:
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
   FIP_VERSION_INPUT: ${{ github.event.inputs.FIP_VERSION || github.event.client_payload.FIP_VERSION || '2025' }}
   SSH_ACTIONS: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
   # Build configuration from inputs
   CONFIG_MODEL: ${{ github.event.inputs.MODEL }}
@@ -240,9 +233,6 @@ jobs:
           fi
         fi
 
-        if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
-          echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
-        fi
 
 
     - name: Checkout source
@@ -656,7 +646,7 @@ jobs:
 
     - name: Organize files and rename
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: ${{ !cancelled() }}
       run: | 
         cd uboot-op
         # Get current timestamp
@@ -701,17 +691,9 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload artifacts to Actions
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
-        path: |
-          uboot-op/upload/*
-
     - name: Generate release notes
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         touch release.txt
 
@@ -776,7 +758,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Publish to Private Repo Release
-      if: steps.tag.outputs.status == 'success' && !cancelled() && env.UPLOAD_RELEASE == 'true'
+      if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
         RELEASE_REPO: ${{ secrets.RELEASE_REPO }}

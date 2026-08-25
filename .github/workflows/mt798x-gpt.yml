@@ -28,19 +28,12 @@ on:
         required: false
         default: false
         type: boolean
-      pub_release:
-        description: 'Publish to GitHub Release'
-        required: false
-        default: 'true'
-        type: boolean
 
 env:
   REPO_URL: ${{ github.event.inputs.REPO_URL }}
   REPO_BRANCH: ${{ github.event.inputs.REPO_BRANCH }}
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
   TZ: Asia/Shanghai
-  UPLOAD_ARTIFACT: true
-  UPLOAD_RELEASE: true
   # Build configuration from inputs
   CONFIG_GPT_TEMPLATE: ${{ github.event.inputs.GPT_TEMPLATE || 'false' }}
 
@@ -94,9 +87,6 @@ jobs:
           git clone $REPO_URL_AUTH -b $REPO_BRANCH uboot-op
           ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
 
-          if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
-            echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
-          fi
 
       - name: Generate .config
         shell: bash
@@ -169,7 +159,7 @@ jobs:
 
       - name: Organize files and rename
         id: organize
-        if: env.UPLOAD_ARTIFACT == 'true' && !cancelled()
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
@@ -194,17 +184,9 @@ jobs:
 
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Upload artifacts to Actions
-        uses: actions/upload-artifact@main
-        if: steps.organize.outputs.status == 'success' && !cancelled()
-        with:
-          name: ${{ env.FILE_DATE }}-gpt-partition-table
-          path: |
-            uboot-op/upload/*
-
       - name: Generate release notes
         id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: steps.organize.outputs.status == 'success' && !cancelled()
         shell: bash
         run: |
           set -euo pipefail
@@ -228,7 +210,7 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Publish to Private Repo Release
-        if: steps.tag.outputs.status == 'success' && !cancelled() && env.UPLOAD_RELEASE == 'true'
+        if: steps.tag.outputs.status == 'success' && !cancelled()
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
           RELEASE_REPO: ${{ secrets.RELEASE_REPO }}

@@ -26,15 +26,9 @@ on:
           - all
           - qf_w1700k
           - xg040gmd
-      pub_release:
-        description: "Publish to GitHub Release"
-        required: false
-        default: 'true'
-        type: boolean
 
 env:
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
-  UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 permissions:
   contents: read
@@ -191,20 +185,8 @@ jobs:
           cp -r "$ARTIFACT_DIR/firmware/"*.ipk "$ARTIFACT_DIR/package/" && rm -f "$ARTIFACT_DIR/firmware/"*.ipk
           mv ./bin/packages/* "$ARTIFACT_DIR/package/"
 
-      - name: Upload Firmware Artifacts
-        uses: actions/upload-artifact@main
-        with:
-          name: immortalwrt_an75xx_firmware_${{ matrix.config }}
-          path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/firmware
-
-      - name: Upload Package Artifacts
-        uses: actions/upload-artifact@main
-        with:
-          name: immortalwrt_an75xx_packages_${{ matrix.config }}
-          path: /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/artifact/package
-
       - name: Publish to Private Repo Release
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
           RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
