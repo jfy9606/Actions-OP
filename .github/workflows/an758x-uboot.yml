@@ -140,7 +140,7 @@ jobs:
         cd uboot-op
 
         echo "=== Building ${{ matrix.model }} (${{ matrix.defconfig }}) ==="
-        export ARCH=arm64
+        export ARCH=arm
         export CROSS_COMPILE="ccache aarch64-linux-gnu-"
         make ${{ matrix.defconfig }}
         make -j"$(nproc)"
@@ -157,6 +157,11 @@ jobs:
           exit 1
         fi
 
+        if [ ! -f "u-boot.bin" ]; then
+          echo "Error: u-boot.bin not found after build" >&2
+          exit 1
+        fi
+
         if [ "${{ matrix.needs_slot }}" = "false" ] && [ ! -f "u-boot.dtb" ]; then
           echo "Error: u-boot.dtb not found after build" >&2
           exit 1
@@ -166,13 +171,13 @@ jobs:
         if [ "${{ matrix.needs_slot }}" = "false" ]; then
           ./chainloader/build-uboot-image.sh \
             "${{ matrix.model }}" \
-            "$BUILD_TARGET" \
+            "u-boot.bin" \
             "u-boot.dtb" \
             "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
         else
           ./chainloader/build-uboot-image.sh \
             "${{ matrix.model }}" \
-            "$BUILD_TARGET" \
+            "u-boot.bin" \
             "$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
         fi
 
