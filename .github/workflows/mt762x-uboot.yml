@@ -253,13 +253,6 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload artifacts to Actions
-      uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
-        path: |
-          uboot-op/upload/*
 
     - name: Generate release notes
       id: tag
