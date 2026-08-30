@@ -14,10 +14,76 @@ on:
   workflow_dispatch:
     inputs:
       MODEL:
-        description: 'Device model (board name in configs-mt7621, e.g. xiaomi_mi-router-3g)'
+        description: 'Device model (board name in configs-mt7621, or all)'
         required: true
         default: 'xiaomi_mi-router-3g'
-        type: string
+        type: choice
+        options:
+        - 'all'
+        - 'adslr_g7'
+        - 'afoundry_ew1200'
+        - 'alfa-network_quad-e4g'
+        - 'ampedwireless_ally-r1900k'
+        - 'asiarf_ap7621'
+        - 'asus_rt-ac57u'
+        - 'asus_rt-acx5p'
+        - 'asus_rt-n56u-b1'
+        - 'beeline_smartbox-turbo-plus'
+        - 'buffalo_wsr-1166dhp'
+        - 'buffalo_wsr-2533dhpl'
+        - 'buffalo_wsr-600dhp'
+        - 'c-life_xg1'
+        - 'cudy_wr1300'
+        - 'cudy_wr2100'
+        - 'd-team_newifi-d2'
+        - 'd-team_pbr-m1'
+        - 'fcj_g-ax1800-f'
+        - 'gehua_ghl-r-001'
+        - 'glinet_gl-mt1300'
+        - 'h3c_tx1800-plus'
+        - 'hiwifi_hc5962'
+        - 'hilink_hlk-7621a'
+        - 'huasifei_ws1208v2'
+        - 'jcg_jhr-ac876m'
+        - 'jcg_jhr-ac945m'
+        - 'jcg_q20'
+        - 'jcg_y2'
+        - 'jdcloud_re-cp-02'
+        - 'jdcloud_re-sp-01b'
+        - 'lenovo_newifi-d1'
+        - 'melonpi_m21-ddr3-256m'
+        - 'melonpi_m21-ddr3-512m'
+        - 'mtc_wr1201'
+        - 'netis_wf2881'
+        - 'openfi_5pro'
+        - 'phicomm_k2p'
+        - 'planex_vr500'
+        - 'qihoo_360t6gs'
+        - 'qihoo_360t6gs-nmbm'
+        - 'raisecom_msg1500-x-00'
+        - 'raisecom_msg1500-z-00'
+        - 'samknows_whitebox-v8'
+        - 'sercomm_na502'
+        - 'storylink_sap-g3200u3'
+        - 'telco-electronics_x1'
+        - 'tenbay_t-mb5eu-v01'
+        - 'thunder_timecloud'
+        - 'xiaoyu_xy-c5'
+        - 'xiaomi_mi-router-3-pro'
+        - 'xiaomi_mi-router-3g'
+        - 'xiaomi_mi-router-4'
+        - 'xiaomi_mi-router-4a-3g-v2'
+        - 'xiaomi_mi-router-ac2100'
+        - 'xiaomi_mi-router-cr660x'
+        - 'xiaomi_redmi-router-ac2100'
+        - 'youhua_wr1200js'
+        - 'youku_yk-l2'
+        - 'zbtlink_zbt-we1326'
+        - 'zbtlink_zbt-wg2626'
+        - 'zbtlink_zbt-wg3526'
+        - 'zte_e8820s'
+        - 'zyxel_nr7101'
+        - 'zyxel_wap6805'
       REPO_URL:
         description: 'Source repository'
         required: true
@@ -149,9 +215,17 @@ jobs:
       run: |
         cd uboot-op
         mkdir -p archive
-        BOARD="$CONFIG_MODEL" ./build.sh | tee "archive/${CONFIG_MODEL}-build.log" || true
+        if [ "$CONFIG_MODEL" = "all" ]; then
+          for cfg in configs-mt7621/*_defconfig; do
+            board=$(basename "$cfg" _defconfig)
+            echo "=== Building $board ==="
+            BOARD="$board" ./build.sh | tee "archive/${board}-build.log" || true
+          done
+        else
+          BOARD="$CONFIG_MODEL" ./build.sh | tee "archive/${CONFIG_MODEL}-build.log" || true
+        fi
         if ! ls archive/*.bin >/dev/null 2>&1; then
-          echo "Error: no .bin produced for $CONFIG_MODEL" >&2
+          echo "Error: no .bin produced" >&2
           exit 1
         fi
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
