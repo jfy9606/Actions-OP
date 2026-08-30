@@ -13,7 +13,7 @@
 #
 # Extended for AN7581 + AN7583 multi-board builds:
 #   - w1700k / xr1710g / xg2010g / nokia-xg-040g-md  (AN7581 SoC)
-#   - an7583_evb / xg040mf                            (AN7583 SoC)
+#   - xg040mf                                         (AN7583 SoC)
 # Boards requiring chainloader packaging (w1700k, xr1710g) use
 # chainloader/build-uboot-image.sh; other boards ship u-boot.bin / u-boot.img
 # directly as the release artifact.
@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       MODEL:
-        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, an7583_evb, xg040mf, or all)'
+        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, xg040mf, or all)'
         required: true
         default: 'all'
         type: choice
@@ -36,7 +36,7 @@ on:
           - xr1710g
           - xg2010g
           - nokia-xg-040g-md
-          - an7583_evb
+
           - xg040mf
       REPO_URL:
         description: 'Source repository'
@@ -82,11 +82,7 @@ jobs:
             needs_slot: false
             needs_chainloader: false
           # --- AN7583 SoC boards ---
-          - model: an7583_evb
-            defconfig: an7583_evb_defconfig
-            artifact_name: u-boot-an7583_evb.bin
-            needs_slot: false
-            needs_chainloader: false
+
           - model: xg040mf
             defconfig: an7583_nokia_xg-040g-mf_defconfig
             artifact_name: u-boot-xg040mf.bin
@@ -236,7 +232,7 @@ jobs:
         echo "" >> release.txt
         echo "---" >> release.txt
         echo "" >> release.txt
-        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / AN7583-EVB / XG-040G-MF).**" >> release.txt
+        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / XG-040G-MF).**" >> release.txt
         echo "release_tag=${{ env.FILE_DATE }}-an758x-${{ matrix.model }}" >> "$GITHUB_OUTPUT"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
