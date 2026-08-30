@@ -1,0 +1,226 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (C) 2026 jfy9606
+#
+# All rights reserved.
+#
+# This file is part of the project uboot-op
+# You may not use, copy, modify or distribute this file except in compliance with the license agreement.
+#
+name: mt762x-uboot
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      MODEL:
+        description: 'Device model (board name in configs-mt7621, e.g. xiaomi_mi-router-3g)'
+        required: true
+        default: 'xiaomi_mi-router-3g'
+        type: string
+      REPO_URL:
+        description: 'Source repository'
+        required: true
+        default: 'https://github.com/jfy9606/uboot-op'
+        type: string
+      REPO_BRANCH:
+        description: 'Repository branch (auto = mt762x)'
+        required: true
+        default: 'auto'
+        type: string
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+      pub_release:
+        description: 'Publish to GitHub Release'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  UPLOAD_TAG_NAME: ${{ github.event.inputs.MODEL }}
+  REPO_URL: ${{ github.event.inputs.REPO_URL }}
+  REPO_BRANCH_INPUT: ${{ github.event.inputs.REPO_BRANCH }}
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
+  SSH_ACTIONS: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+  CONFIG_MODEL: ${{ github.event.inputs.MODEL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Check Server Performance
+      run: |
+        echo -e "已知CPU型号（降序）：7763，8370C，8272CL，8171M，E5-2673 \n"
+        echo "--------------------------CPU信息--------------------------"
+        echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo "--------------------------内存信息--------------------------"
+        echo "已安装内存详细信息："
+        echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+
+    - name: Space cleanup and Initialization environment
+      env:
+         DEBIAN_FRONTEND: noninteractive
+      run: |
+         sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
+         sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
+         sudo -E apt -qq update
+         sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
+         sudo -E apt -qq -y full-upgrade
+         sudo -E apt -qq install -y build-essential bc bison flex libssl-dev swig python2-dev wget tar rename
+         sudo -E systemctl daemon-reload
+         sudo -E apt -qq -y autoremove --purge
+         sudo -E apt -qq autoclean
+         sudo -E timedatectl set-timezone "Asia/Shanghai"
+         sudo rm -f /usr/bin/python
+         sudo ln -s /usr/bin/python2 /usr/bin/python
+
+    - name: Configuration check
+      shell: bash
+      run: |
+        if [ -z "$CONFIG_MODEL" ]; then
+          echo "Error: MODEL must not be empty." >&2
+          exit 1
+        fi
+        if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
+          echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
+        fi
+
+
+    - name: Checkout source
+      run: |
+        set -euo pipefail
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        cd /workdir
+        df -hT $PWD
+
+        REPO_URL_IN="$REPO_URL"
+        REPO_BRANCH_IN="$REPO_BRANCH_INPUT"
+
+        # Inject PAT for private repo access
+        if [ -n "$REPO_TOKEN" ]; then
+          REPO_URL_IN="$(echo "$REPO_URL_IN" | sed "s|https://|https://${REPO_TOKEN}@|")"
+        fi
+
+        # Auto-detect branch logic: if REPO_BRANCH=auto, use mt762x
+        if [ -n "$REPO_BRANCH_IN" ] && [ "$REPO_BRANCH_IN" != "auto" ]; then
+          REPO_REF="$REPO_BRANCH_IN"
+        else
+          REPO_REF="mt762x"
+        fi
+
+        echo "Using source: $REPO_URL (ref: $REPO_REF)"
+        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" uboot-op
+
+        SOURCE_SHA="$(git -C uboot-op rev-parse HEAD)"
+        echo "REPO_BRANCH=$REPO_REF" >> "$GITHUB_ENV"
+        echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+        ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
+
+
+    - name: SSH connection management
+      uses: P3TERX/ssh2actions@v1.0.0
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
+      env:
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+    - name: Download OpenWrt toolchain
+      run: |
+        cd /workdir
+        wget -O - https://github.com/DragonBluep/uboot-mt7621/releases/download/20230517/openwrt-toolchain-ramips-mt7621_gcc-12.3.0_musl.Linux-x86_64.tar.xz \
+          | tar --xz -xf -
+
+    - name: Compile
+      id: compile
+      run: |
+        cd uboot-op
+        mkdir -p archive
+        BOARD="$CONFIG_MODEL" ./build.sh | tee "archive/${CONFIG_MODEL}-build.log" || true
+        if ! ls archive/*.bin >/dev/null 2>&1; then
+          echo "Error: no .bin produced for $CONFIG_MODEL" >&2
+          exit 1
+        fi
+        echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Show disk usage
+      if: (!cancelled())
+      run: df -hT
+
+    - name: Organize files and rename
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        cd uboot-op
+        TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+        mkdir -p upload
+        if [ -d "archive" ] && ls archive/* >/dev/null 2>&1; then
+          rename "s/(.*)\.(.*)/\$1_${TIMESTAMP}.\$2/" archive/* || true
+          cp -r archive/* upload/ || true
+        fi
+        if ls upload/*.log >/dev/null 2>&1; then
+          tar -czf upload/build-logs_${TIMESTAMP}.tar.gz upload/*.log
+          rm -f upload/*.log
+        fi
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload artifacts to Actions
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
+        path: |
+          uboot-op/upload/*
+
+    - name: Generate release notes
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        touch release.txt
+        echo "- Commit: ${{ env.SOURCE_SHA }}" >> release.txt
+        echo "- Target model: ${{ env.UPLOAD_TAG_NAME }}" >> release.txt
+        echo "- Source repo: ${{ env.REPO_URL }}" >> release.txt
+        echo "- Branch: ${{ env.REPO_BRANCH }}" >> release.txt
+        echo "- Build time: ${{ env.FILE_DATE }}" >> release.txt
+        echo "" >> release.txt
+        echo "---" >> release.txt
+        echo "" >> release.txt
+        echo "**PLEASE SEE THE README FOR USAGE INSTRUCTIONS AND DISCLAIMERS.**" >> release.txt
+        echo "release_tag=${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Publish to Private Repo Release
+      if: steps.tag.outputs.status == 'success' && !cancelled() && env.UPLOAD_RELEASE == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
+        RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+      run: |
+        set -euo pipefail
+        RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
+        if [ -z "$GH_TOKEN" ]; then
+          echo "REPO_TOKEN secret not set, skipping publish"
+          exit 0
+        fi
+        TAG="${{ steps.tag.outputs.release_tag }}"
+        TITLE="${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}"
+        echo "Publishing to $RELEASE_REPO release $TAG"
+        gh release create "$TAG" \
+          --repo "$RELEASE_REPO" \
+          --title "$TITLE" \
+          --notes-file release.txt \
+          uboot-op/upload/*
