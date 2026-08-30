@@ -11,12 +11,14 @@
 # and mt798x-uboot.yml (artifact/release style). Uses direct defconfig+make path
 # (no OpenWrt build system dependency).
 #
-# Extended for AN7581 + AN7583 multi-board builds:
+# Extended for AN7581 + AN7583 multi-board builds with FIP auto-merge:
 #   - w1700k / xr1710g / xg2010g / nokia-xg-040g-md  (AN7581 SoC)
-#   - xg040mf                                         (AN7583 SoC)
+#   - an7581_evb / an7583_evb / xg040mf              (AN7583 SoC)
 # Boards requiring chainloader packaging (w1700k, xr1710g) use
 # chainloader/build-uboot-image.sh; other boards ship u-boot.bin / u-boot.img
 # directly as the release artifact.
+# Boards needing FIP (xg040mf, nokia-xg-040g-md) get BL31+U-Boot merged
+# via scripts/bl31-fetch.sh + scripts/fip-merge.sh (LZMA + fiptool create).
 #
 name: an758x-uboot
 
@@ -26,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       MODEL:
-        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, xg040mf, or all)'
+        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, an7581_evb, an7583_evb, xg040mf, or all)'
         required: true
         default: 'all'
         type: choice
@@ -36,7 +38,8 @@ on:
           - xr1710g
           - xg2010g
           - nokia-xg-040g-md
-
+          - an7581_evb
+          - an7583_evb
           - xg040mf
       REPO_URL:
         description: 'Source repository'
@@ -48,11 +51,17 @@ on:
         required: true
         default: 'main'
         type: string
+      pub_release:
+        description: 'Publish to GitHub Release'
+        required: false
+        default: 'false'
+        type: boolean
 
 
 env:
   TZ: Asia/Shanghai
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
+  UPLOAD_RELEASE: ${{ github.event.inputs.pub_release != 'false' }}
 
 jobs:
   build:
@@ -66,28 +75,44 @@ jobs:
             artifact_name: xr1710g-chainloader-slot.bin
             needs_slot: true
             needs_chainloader: true
+            needs_fip: false
           - model: w1700k
             defconfig: w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
+            needs_fip: false
           - model: xg2010g
             defconfig: xg2010g_defconfig
             artifact_name: u-boot-xg2010g.img
             needs_slot: false
             needs_chainloader: false
+            needs_fip: false
           - model: nokia-xg-040g-md
             defconfig: an7581_nokia-xg-040g-md_defconfig
             artifact_name: u-boot-nokia-xg-040g-md.bin
             needs_slot: false
             needs_chainloader: false
+            needs_fip: true
+          - model: an7581_evb
+            defconfig: an7581_evb_defconfig
+            artifact_name: u-boot-an7581_evb.bin
+            needs_slot: false
+            needs_chainloader: false
+            needs_fip: false
           # --- AN7583 SoC boards ---
-
+          - model: an7583_evb
+            defconfig: an7583_evb_defconfig
+            artifact_name: u-boot-an7583_evb.bin
+            needs_slot: false
+            needs_chainloader: false
+            needs_fip: false
           - model: xg040mf
             defconfig: an7583_nokia_xg-040g-mf_defconfig
             artifact_name: u-boot-xg040mf.bin
             needs_slot: false
             needs_chainloader: false
+            needs_fip: true
 
     permissions:
       contents: write
@@ -115,7 +140,7 @@ jobs:
          sudo -E apt -qq update
          sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
          sudo -E apt -qq -y full-upgrade
-         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename
+         sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename xz-utils
          sudo -E systemctl daemon-reload
          sudo -E apt -qq -y autoremove --purge
          sudo -E apt -qq autoclean
@@ -219,9 +244,67 @@ jobs:
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
+    - name: LZMA compress for ${{ matrix.model }}
+      id: lzma
+      if: steps.compile.outputs.status == 'success' && matrix.needs_chainloader == false && !cancelled()
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        cd uboot-op
+        UBOOT_BIN="$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
+        LZMA_OUT="$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}.lzma"
+        echo "=== LZMA compressing ${{ matrix.model }} ==="
+        scripts/lzma-compress.sh "$UBOOT_BIN" "$LZMA_OUT" || {
+          echo "Warning: LZMA compression failed for ${{ matrix.model }}, skipping"
+          exit 0
+        }
+        echo "LZMA output: $LZMA_OUT ($(wc -c < "$LZMA_OUT") bytes)"
+
+    - name: FIP merge for ${{ matrix.model }}
+      id: fip
+      if: steps.compile.outputs.status == 'success' && matrix.needs_fip == true && !cancelled()
+      continue-on-error: true
+      run: |
+        set -euo pipefail
+        cd uboot-op
+
+        echo "=== Installing fiptool ==="
+        # Build fiptool from TF-A source (lightweight, no full TF-A build needed)
+        sudo apt -qq install -y python3 python3-pyelftools
+        FIP_TMP="$(mktemp -d)"
+        git clone --depth 1 --branch v2.10 https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git "$FIP_TMP/tfa"
+        make -C "$FIP_TMP/tfa" V=0 fiptool
+        sudo cp "$FIP_TMP/tfa/tools/fiptool/fiptool" /usr/local/bin/fiptool
+        rm -rf "$FIP_TMP"
+
+        echo "=== Fetching BL31 for ${{ matrix.model }} ==="
+        BL31_OUT="/tmp/bl31-${{ matrix.model }}.bin"
+        BL31_SOURCE="$(scripts/bl31-fetch.sh "${{ matrix.model }}" "$BL31_OUT" 2>&1)" || true
+        echo "BL31 source: $BL31_SOURCE"
+
+        if [ ! -s "$BL31_OUT" ]; then
+          echo "Warning: BL31 acquisition failed for ${{ matrix.model }}, skipping FIP merge"
+          echo "status=skipped" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "=== Merging FIP (BL31 + U-Boot) ==="
+        UBOOT_BIN="$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
+        FIP_OUT="$GITHUB_WORKSPACE/output/${{ matrix.model }}-bl31-uboot.fip"
+        scripts/fip-merge.sh "$BL31_OUT" "$UBOOT_BIN" "$FIP_OUT"
+        echo "FIP created: $FIP_OUT ($(wc -c < "$FIP_OUT") bytes)"
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@main
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      with:
+        name: an758x_uboot_firmware_${{ matrix.model }}
+        path: output/*
+
     - name: Generate release notes
       id: tag
-      if: steps.compile.outputs.status == 'success' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
         touch release.txt
         echo "- Commit: ${{ env.SOURCE_SHA }}" >> release.txt
@@ -229,10 +312,13 @@ jobs:
         echo "- Defconfig: ${{ matrix.defconfig }}" >> release.txt
         echo "- Source: ${{ inputs.REPO_URL }} (branch: ${{ env.REPO_BRANCH }})" >> release.txt
         echo "- Build time: ${{ env.FILE_DATE }}" >> release.txt
+        if [ "${{ steps.fip.outputs.status }}" = "success" ]; then
+          echo "- FIP: ${{ matrix.model }}-bl31-uboot.fip (BL31 + U-Boot merged)" >> release.txt
+        fi
         echo "" >> release.txt
         echo "---" >> release.txt
         echo "" >> release.txt
-        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / XG-040G-MF).**" >> release.txt
+        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / AN7581-EVB / AN7583-EVB / XG-040G-MF).**" >> release.txt
         echo "release_tag=${{ env.FILE_DATE }}-an758x-${{ matrix.model }}" >> "$GITHUB_OUTPUT"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
