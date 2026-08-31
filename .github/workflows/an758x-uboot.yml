@@ -52,7 +52,7 @@ on:
       pub_release:
         description: 'Publish to GitHub Release'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
 
 
@@ -74,7 +74,6 @@ jobs:
             needs_slot: true
             needs_chainloader: true
             needs_fip: false
-            needs_lzma: true
             regression: false
           - model: w1700k
             defconfig: w1700k_defconfig
@@ -82,7 +81,6 @@ jobs:
             needs_slot: false
             needs_chainloader: true
             needs_fip: false
-            needs_lzma: true
             regression: true
             expected_fsdata: fsdata_w1700k.c
           - model: xg2010g
@@ -91,7 +89,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: false
-            needs_lzma: true
             regression: false
             expected_fsdata: fsdata_xg2010g.c
           - model: nokia-xg-040g-md
@@ -100,7 +97,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            needs_lzma: true
             regression: false
             expected_fsdata: fsdata_xg2010g.c
           # --- AN7583 SoC boards ---
@@ -110,7 +106,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            needs_lzma: true
             regression: false
             expected_fsdata: fsdata_xg2010g.c
 
@@ -268,21 +263,6 @@ jobs:
         grep -q "CONFIG_PCS_AIROHA_AN7581=y" .config || { echo "FAIL: CONFIG_PCS_AIROHA_AN7581=y missing"; exit 1; }
         echo "w1700k regression gate: PASS"
 
-    - name: LZMA compress for ${{ matrix.model }}
-      id: lzma
-      if: steps.compile.outputs.status == 'success' && matrix.needs_lzma == true && !cancelled()
-      continue-on-error: true
-      run: |
-        set -euo pipefail
-        cd uboot-op
-        UBOOT_BIN="$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}"
-        LZMA_OUT="$GITHUB_WORKSPACE/output/${{ matrix.artifact_name }}.lzma"
-        echo "=== LZMA compressing ${{ matrix.model }} ==="
-        scripts/lzma-compress.sh "$UBOOT_BIN" "$LZMA_OUT" || {
-          echo "Warning: LZMA compression failed for ${{ matrix.model }}, skipping"
-          exit 0
-        }
-        echo "LZMA output: $LZMA_OUT ($(wc -c < "$LZMA_OUT") bytes)"
 
     - name: FIP merge for ${{ matrix.model }}
       id: fip
@@ -319,12 +299,6 @@ jobs:
         echo "FIP created: $FIP_OUT ($(wc -c < "$FIP_OUT") bytes)"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && !cancelled()
-      with:
-        name: an758x_uboot_firmware_${{ matrix.model }}
-        path: output/*
 
     - name: Generate release notes
       id: tag
