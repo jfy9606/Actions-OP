@@ -13,7 +13,7 @@
 #
 # Extended for AN7581 + AN7583 multi-board builds with FIP auto-merge:
 #   - w1700k / xr1710g / xg2010g / nokia-xg-040g-md  (AN7581 SoC)
-#   - an7581_evb / an7583_evb / xg040mf              (AN7583 SoC)
+#   - xg040mf                                        (AN7583 SoC)
 # Boards requiring chainloader packaging (w1700k, xr1710g) use
 # chainloader/build-uboot-image.sh; other boards ship u-boot.bin / u-boot.img
 # directly as the release artifact.
@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       MODEL:
-        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, an7581_evb, an7583_evb, xg040mf, or all)'
+        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, xg040mf, or all)'
         required: true
         default: 'all'
         type: choice
@@ -38,8 +38,6 @@ on:
           - xr1710g
           - xg2010g
           - nokia-xg-040g-md
-          - an7581_evb
-          - an7583_evb
           - xg040mf
       REPO_URL:
         description: 'Source repository'
@@ -76,43 +74,45 @@ jobs:
             needs_slot: true
             needs_chainloader: true
             needs_fip: false
+            needs_lzma: true
+            regression: false
           - model: w1700k
             defconfig: w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
             needs_fip: false
+            needs_lzma: true
+            regression: true
+            expected_fsdata: fsdata_w1700k.c
           - model: xg2010g
             defconfig: xg2010g_defconfig
             artifact_name: u-boot-xg2010g.img
             needs_slot: false
             needs_chainloader: false
             needs_fip: false
+            needs_lzma: true
+            regression: false
+            expected_fsdata: fsdata_xg2010g.c
           - model: nokia-xg-040g-md
             defconfig: an7581_nokia-xg-040g-md_defconfig
             artifact_name: u-boot-nokia-xg-040g-md.bin
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-          - model: an7581_evb
-            defconfig: an7581_evb_defconfig
-            artifact_name: u-boot-an7581_evb.bin
-            needs_slot: false
-            needs_chainloader: false
-            needs_fip: false
+            needs_lzma: true
+            regression: false
+            expected_fsdata: fsdata_xg2010g.c
           # --- AN7583 SoC boards ---
-          - model: an7583_evb
-            defconfig: an7583_evb_defconfig
-            artifact_name: u-boot-an7583_evb.bin
-            needs_slot: false
-            needs_chainloader: false
-            needs_fip: false
           - model: xg040mf
             defconfig: an7583_nokia_xg-040g-mf_defconfig
             artifact_name: u-boot-xg040mf.bin
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
+            needs_lzma: true
+            regression: false
+            expected_fsdata: fsdata_xg2010g.c
 
     permissions:
       contents: write
@@ -244,9 +244,33 @@ jobs:
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
+    - name: Verify fsdata selection for ${{ matrix.model }}
+      if: steps.compile.outputs.status == 'success' && matrix.expected_fsdata && !cancelled()
+      continue-on-error: true
+      run: |
+        cd uboot-op
+        EXPECTED="${{ matrix.expected_fsdata }}"
+        ACTUAL=$(grep -oP 'HTTPD_FSDATA_FILE\s*[:=]\s*\K.*' lib/lwip/Makefile 2>/dev/null | head -1 | xargs basename 2>/dev/null || true)
+        if [ -n "$ACTUAL" ]; then
+          echo "fsdata: expected=$EXPECTED actual=$ACTUAL"
+          [ "$ACTUAL" = "$EXPECTED" ] || echo "Warning: fsdata mismatch for ${{ matrix.model }}"
+        fi
+        [ -f "lib/lwip/httpd/$EXPECTED" ] && echo "fsdata file $EXPECTED exists" || echo "Warning: $EXPECTED not found"
+
+    - name: w1700k regression gate
+      if: steps.compile.outputs.status == 'success' && matrix.regression == true && !cancelled()
+      run: |
+        cd uboot-op
+        echo "=== w1700k regression gate ==="
+        grep -q "CONFIG_CMD_TELNETD=y" .config || { echo "FAIL: CONFIG_CMD_TELNETD=y missing"; exit 1; }
+        [ -f lib/lwip/httpd/fsdata_w1700k.c ] || { echo "FAIL: fsdata_w1700k.c missing"; exit 1; }
+        [ -f net/lwip/recovery_telnetd.c ] || { echo "FAIL: recovery_telnetd.c missing"; exit 1; }
+        grep -q "CONFIG_PCS_AIROHA_AN7581=y" .config || { echo "FAIL: CONFIG_PCS_AIROHA_AN7581=y missing"; exit 1; }
+        echo "w1700k regression gate: PASS"
+
     - name: LZMA compress for ${{ matrix.model }}
       id: lzma
-      if: steps.compile.outputs.status == 'success' && matrix.needs_chainloader == false && !cancelled()
+      if: steps.compile.outputs.status == 'success' && matrix.needs_lzma == true && !cancelled()
       continue-on-error: true
       run: |
         set -euo pipefail
@@ -318,7 +342,7 @@ jobs:
         echo "" >> release.txt
         echo "---" >> release.txt
         echo "" >> release.txt
-        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / AN7581-EVB / AN7583-EVB / XG-040G-MF).**" >> release.txt
+        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / XG-040G-MF).**" >> release.txt
         echo "release_tag=${{ env.FILE_DATE }}-an758x-${{ matrix.model }}" >> "$GITHUB_OUTPUT"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
