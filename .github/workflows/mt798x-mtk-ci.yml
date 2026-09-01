@@ -8,7 +8,7 @@ on:
       branch:
         description: "Git branch to build"
         required: true
-        default: "main-mtk"
+        default: "main-mt798x"
         type: string
       target:
         description: "Config to build (name without 'menuconfig-' prefix, or 'all')"
@@ -134,7 +134,7 @@ jobs:
         working-directory: /home/runner/work/Actions-OP/Actions-OP/workdir
         env:
           REPO_URL: "https://x-access-token:${{ env.REPO_TOKEN }}@github.com/jfy9606/immortalwrt/"
-          REPO_BRANCH: "main-mtk"
+          REPO_BRANCH: "main-mt798x"
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt

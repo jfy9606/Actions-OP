@@ -90,7 +90,7 @@ on:
         default: 'https://github.com/jfy9606/uboot-op'
         type: string
       REPO_BRANCH:
-        description: 'Repository branch (auto = mt762x)'
+        description: 'Repository branch (auto = main-mt762x)'
         required: true
         default: 'auto'
         type: string
@@ -181,11 +181,11 @@ jobs:
           REPO_URL_IN="$(echo "$REPO_URL_IN" | sed "s|https://|https://${REPO_TOKEN}@|")"
         fi
 
-        # Auto-detect branch logic: if REPO_BRANCH=auto, use mt762x
+        # Auto-detect branch logic: if REPO_BRANCH=auto, use main-mt762x
         if [ -n "$REPO_BRANCH_IN" ] && [ "$REPO_BRANCH_IN" != "auto" ]; then
           REPO_REF="$REPO_BRANCH_IN"
         else
-          REPO_REF="mt762x"
+          REPO_REF="main-mt762x"
         fi
 
         echo "Using source: $REPO_URL (ref: $REPO_REF)"
