@@ -1,0 +1,200 @@
+name: immortalwrt-mt762x-CI
+
+on:
+  #schedule:
+    #- cron: 0 20 * * *
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Git branch to build"
+        required: true
+        default: "main-mt762x"
+        type: string
+      target:
+        description: "Config to build (name without 'menuconfig-' prefix, or 'all')"
+        required: true
+        default: "all"
+        type: string
+
+env:
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
+
+permissions:
+  contents: read
+
+jobs:
+
+  prepare:
+    name: Prepare Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Clone source code (shallow)
+        env:
+          REPO_URL: "https://x-access-token:${{ env.REPO_TOKEN }}@github.com/jfy9606/immortalwrt/"
+          REPO_BRANCH: ${{ inputs.branch }}
+        run: |
+          git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" /tmp/openwrt
+      - id: set-matrix
+        run: |
+          TARGET="${{ inputs.target }}"
+          if [ "$TARGET" = "all" ]; then
+            configs=""
+            for f in /tmp/openwrt/.github/menuconfig/mt762x/menuconfig-*; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f" | sed 's/menuconfig-//')
+              configs="$configs,\"$name\""
+            done
+            configs="${configs:1}"
+            echo "matrix=[$configs]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=[\"$TARGET\"]" >> $GITHUB_OUTPUT
+          fi
+
+  build_openwrt:
+    name: Build ${{ matrix.config }}
+    needs: prepare
+    if: needs.prepare.outputs.matrix != '[]'
+    strategy:
+      matrix:
+        config: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false
+    runs-on: ubuntu-24.04
+
+    steps:
+
+      - name: Check Server Performance
+        run: |
+          echo -e "已知CPU型号（降序）：7763，8370C，8272CL，8171M，E5-2673 \n"
+          echo "--------------------------CPU信息--------------------------"
+          echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+          echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+          echo "--------------------------内存信息--------------------------"
+          echo "已安装内存详细信息："
+          echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+          echo "--------------------------硬盘信息--------------------------"
+          echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+      - name: "Optimize Disk Space"
+        uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.1"
+        with:
+         operate_sudo: "True"
+         general_include: ".+"
+         general_exclude: |-
+           ^GCC$
+           ^G\+\+$
+           Clang
+           LLVM
+         docker_include: ".+"
+         docker_prune: "True"
+         docker_clean: "True"
+         apt_prune: "True"
+         apt_clean: "True"
+         homebrew_prune: "True"
+         homebrew_clean: "True"
+         npm_prune: "True"
+         npm_clean: "True"
+         os_swap: "False"
+
+      - name: Freeing up disk space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 2048
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+
+      - name: Space cleanup and Initialization environment
+        env:
+           DEBIAN_FRONTEND: noninteractive
+        run: |
+           sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
+           sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
+           sudo -E apt -qq update
+           sudo -E apt -qq -y purge azure-cli* '^llvm-.*' docker* google* powershell* snap*
+           sudo -E apt -qq -y full-upgrade
+           sudo -E apt -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+           sudo -E systemctl daemon-reload
+           sudo -E apt -qq -y autoremove --purge
+           sudo -E apt -qq autoclean
+           sudo -E timedatectl set-timezone "Asia/Shanghai"
+           sudo -E mkdir -p /home/runner/work/Actions-OP/Actions-OP/workdir
+           sudo -E chown -R $USER:$GROUPS /home/runner/work/Actions-OP/Actions-OP/workdir
+
+      - name: Clone source code
+        working-directory: /home/runner/work/Actions-OP/Actions-OP/workdir
+        env:
+          REPO_URL: "https://x-access-token:${{ env.REPO_TOKEN }}@github.com/jfy9606/immortalwrt/"
+          REPO_BRANCH: "main-mt762x"
+        run: |
+          df -hT $PWD
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          cd openwrt
+          # Clean remote URL to remove embedded token (LLVM CMake rejects URLs with passwords)
+          git remote set-url origin https://github.com/jfy9606/immortalwrt/
+          # Set up credential helper for future git operations (feeds, etc.)
+          git config --global credential.helper "!f() { echo 'protocol=https'; echo 'host=github.com'; echo 'username=x-access-token'; echo 'password=${{ env.REPO_TOKEN }}'; }; f"
+          ln -sf /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      - name: Enable build ccache
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          ccache: 'true'
+          mixkey: 'mt762x-${{ matrix.config }}'
+          prefix: ${{ github.workspace }}/openwrt
+
+      - name: Update & Install feeds
+        run: |
+          /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds update -a
+          /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds install -a
+
+      - name: Generate and Compile Firmware
+        env:
+          LLVM_FORCE_VC_REPOSITORY: "https://github.com/"
+        run: |
+          cd /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt
+          CONFIG_NAME="menuconfig-${{ matrix.config }}"
+          echo "======================================="
+          echo "Building with configuration: $CONFIG_NAME"
+          echo "======================================="
+
+          cp -f ".github/menuconfig/mt762x/$CONFIG_NAME" .config
+          make defconfig
+          make download -j16
+          make -j$(nproc) || make -j1 || make -j1 V=s
+
+          echo "======================="
+          echo "Space usage after build ($CONFIG_NAME):"
+          echo "======================="
+          df -h
+          du -h --max-depth=1 ./ --exclude=build_dir --exclude=bin
+          du -h --max-depth=1 ./build_dir
+          du -h --max-depth=1 ./bin
+
+          mkdir -p ./release
+          find ./bin/targets/ -type f ! -name "*.ipk" -exec cp {} ./release/ \;
+
+      - name: Publish to Private Repo Release
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+        run: |
+          set -euo pipefail
+          RELEASE_REPO="${RELEASE_REPO:-jfy9606/immortalwrt}"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "REPO_TOKEN not set, skipping"
+            exit 0
+          fi
+          FILE_DATE=$(TZ=Asia/Shanghai date +"%Y.%m.%d-%H%M")
+          TAG="${FILE_DATE}-immortalwrt-mt762x-${{ matrix.config }}"
+          echo "Publishing to $RELEASE_REPO release $TAG"
+          gh release create "$TAG" \
+            --repo "$RELEASE_REPO" \
+            --title "$TAG" \
+            --notes "Auto-built immortalwrt mt762x firmware (${{ matrix.config }}) from commit ${{ github.sha }}" \
+            "$GITHUB_WORKSPACE/openwrt/release/"*
