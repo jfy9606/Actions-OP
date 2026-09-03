@@ -1,4 +1,4 @@
-name: immortalwrt-mt762x-CI
+name: immortalwrt-mt762x-mtk-CI
 
 on:
   #schedule:
