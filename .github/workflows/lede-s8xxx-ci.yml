@@ -125,6 +125,7 @@ jobs:
       - name: Update & Install feeds
         run: |
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds update -a
+          sed -i -e 's|^PKG_SOURCE_URL_FILE:=.*|PKG_SOURCE_URL_FILE:=svn$(PKG_VERSION).tar.gz|' -e 's|^PKG_BUILD_DIR:=.*|PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-svn$(PKG_VERSION)|' /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/feeds/third/vlmcsd/Makefile
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds install -a
 
       - name: Generate and Compile Firmware for Each Configuration
