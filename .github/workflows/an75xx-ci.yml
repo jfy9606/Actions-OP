@@ -27,6 +27,7 @@ on:
           - qf_w1700k
           - xg040gmd
           - xg040gmf
+          - xg2010g
 
 env:
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
@@ -46,7 +47,7 @@ jobs:
         run: |
           TARGET="${{ inputs.target }}"
           if [ "$TARGET" = "all" ]; then
-            echo 'matrix=["qf_w1700k","xg040gmd","xg040gmf"]' >> $GITHUB_OUTPUT
+            echo 'matrix=["qf_w1700k","xg040gmd","xg040gmf","xg2010g"]' >> $GITHUB_OUTPUT
           else
             echo "matrix=[\"$TARGET\"]" >> $GITHUB_OUTPUT
           fi
