@@ -156,6 +156,15 @@ jobs:
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds update -a
           /home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/scripts/feeds install -a
 
+      - name: Verify PON feed availability
+        run: |
+          FEED_DIR=/home/runner/work/Actions-OP/Actions-OP/workdir/openwrt/feeds/airoha_pon
+          if [ ! -f "$FEED_DIR/luci-app-airoha-pon/Makefile" ]; then
+            echo "::error::airoha_pon feed missing or incomplete after feeds update. scripts/feeds ignores failed clones, so the firmware would silently lack luci-app-airoha-pon. Check credential-helper access to jfy9606/luci-app-airoha-pon."
+            exit 1
+          fi
+          echo "airoha_pon feed commit: $(git -C "$FEED_DIR" log --oneline -1)"
+
       - name: Generate and Compile Firmware
         env:
           LLVM_FORCE_VC_REPOSITORY: "https://github.com/"
@@ -168,6 +177,16 @@ jobs:
 
           cp -f ".github/menuconfig/an75xx/$CONFIG_NAME" .config
           make defconfig
+          # Fail loudly if a requested package was dropped from .config
+          # (missing feed or broken dependency chain), instead of shipping
+          # firmware without luci-app-airoha-pon.
+          for PKG in luci-app-airoha-pon airoha-omci; do
+            if grep -q "^CONFIG_PACKAGE_${PKG}=y$" ".github/menuconfig/an75xx/$CONFIG_NAME" && \
+               ! grep -q "^CONFIG_PACKAGE_${PKG}=y$" .config; then
+              echo "::error::CONFIG_PACKAGE_${PKG}=y requested in $CONFIG_NAME but dropped by defconfig (missing feed or unsatisfiable dependency)"
+              exit 1
+            fi
+          done
           make download -j16
           make -j$(nproc) || make -j1 || make -j1 V=s
 
