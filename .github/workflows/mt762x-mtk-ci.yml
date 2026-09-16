@@ -144,7 +144,7 @@ jobs:
         uses: stupidloud/cachewrtbuild@main
         with:
           ccache: 'true'
-          mixkey: 'mt762x-${{ matrix.config }}'
+          mixkey: 'mt762x'
           prefix: ${{ github.workspace }}/openwrt
 
       - name: Update & Install feeds

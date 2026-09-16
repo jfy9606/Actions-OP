@@ -178,9 +178,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.ccache
-        key: ccache-an758x-${{ matrix.model }}-${{ github.sha }}
+        key: ccache-an758x-${{ github.sha }}
         restore-keys: |
-          ccache-an758x-${{ matrix.model }}-
+          ccache-an758x-
 
     - name: Build U-Boot for ${{ matrix.model }}
       id: compile

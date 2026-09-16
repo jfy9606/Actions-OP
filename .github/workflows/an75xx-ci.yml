@@ -148,7 +148,7 @@ jobs:
         uses: stupidloud/cachewrtbuild@main
         with:
           ccache: 'true'
-          mixkey: 'cortex-a53-${{ matrix.config }}'
+          mixkey: 'cortex-a53'
           prefix: ${{ github.workspace }}/openwrt
 
       - name: Update & Install feeds
