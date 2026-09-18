@@ -277,6 +277,17 @@ jobs:
         ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
 
 
+    - name: Install failsafe JS dependencies
+      run: |
+        cd uboot-op
+        embed_dir="uboot-mtk-20250711/failsafe/embedded"
+        if [ -f "${embed_dir}/package.json" ]; then
+          echo "Installing failsafe JS dependencies (including semver)..."
+          ( cd "${embed_dir}" && npm install --no-audit --no-fund && npm install semver --no-audit --no-fund --no-save )
+        else
+          echo "No package.json at ${embed_dir}, skipping"
+        fi
+
     - name: SSH connection management
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
@@ -646,7 +657,15 @@ jobs:
         for version in "${SUPPORTED_VERSIONS[@]}"; do
           rm -rf "temp_output_${version}"
         done
-        
+
+        # Verify build produced binaries (exclude log files)
+        binary_count=$(find output/ -type f ! -name '*.log' 2>/dev/null | wc -l)
+        if [ "$binary_count" -eq 0 ]; then
+          echo "ERROR: No binaries produced — all builds failed."
+          exit 1
+        fi
+        echo "Build produced $binary_count binary file(s)"
+
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
