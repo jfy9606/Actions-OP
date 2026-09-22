@@ -1,0 +1,251 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Copyright (C) 2026 jfy9606
+#
+# All rights reserved.
+#
+# This file is part of the project uboot-op
+# You may not use, copy, modify or distribute this file except in compliance with the license agreement.
+#
+name: mt798x-gpt
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      REPO_URL:
+        description: 'Source repository'
+        required: true
+        default: 'https://github.com/jfy9606/uboot-op'
+        type: string
+      REPO_BRANCH:
+        description: 'Repository branch'
+        required: true
+        default: 'mt798x'
+        type: string
+      GPT_TEMPLATE:
+        description: 'Include template partition table'
+        required: false
+        default: false
+        type: boolean
+      pub_release:
+        description: 'Publish to GitHub Release'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  REPO_URL: ${{ github.event.inputs.REPO_URL }}
+  REPO_BRANCH: ${{ github.event.inputs.REPO_BRANCH }}
+  REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
+  TZ: Asia/Shanghai
+  UPLOAD_ARTIFACT: true
+  UPLOAD_RELEASE: true
+  # Build configuration from inputs
+  CONFIG_GPT_TEMPLATE: ${{ github.event.inputs.GPT_TEMPLATE || 'false' }}
+
+jobs:
+  build-gpt:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check Server Performance
+        run: |
+          echo -e "已知CPU型号（降序）：7763，8370C，8272CL，8171M，E5-2673 \n"
+          echo "--------------------------CPU信息--------------------------"
+          echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+          echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+          echo "--------------------------内存信息--------------------------"
+          echo "已安装内存详细信息："
+          echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+          echo "--------------------------硬盘信息--------------------------"
+          echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
+
+
+      - name: Space cleanup and Initialization environment
+        env:
+           DEBIAN_FRONTEND: noninteractive
+        run: |
+           sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
+           sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
+           sudo -E apt -qq update
+           sudo systemctl stop snapd snapd.socket 2>/dev/null || true
+           sudo -E apt -qq -y purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
+           sudo -E apt-mark hold snapd
+           sudo -E apt -qq -y full-upgrade
+           sudo -E apt -qq install -y build-essential ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 tar rename
+           sudo -E systemctl daemon-reload
+           sudo -E apt -qq -y autoremove --purge
+           sudo -E apt -qq autoclean
+           sudo -E timedatectl set-timezone "Asia/Shanghai"
+           sudo mkdir -p /workdir
+           sudo chown $USER:$GROUPS /workdir
+
+      - name: Checkout source
+        working-directory: /workdir
+        run: |
+          df -hT $PWD
+          if [ -n "$REPO_TOKEN" ]; then
+            REPO_URL_AUTH="$(echo "$REPO_URL" | sed "s|https://|https://${REPO_TOKEN}@|")"
+          else
+            REPO_URL_AUTH="$REPO_URL"
+          fi
+          git clone $REPO_URL_AUTH -b $REPO_BRANCH uboot-op
+          ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
+
+          if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
+            echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Generate .config
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uboot-op
+
+          # Generate .config for GPT build
+          echo "# CONFIG_BUILD_FIP is not set" > .config
+          echo "# CONFIG_BUILD_ATF is not set" >> .config
+          echo "CONFIG_BUILD_GPT=y" >> .config
+
+          # SILENT and BUILD_LOG defaults
+          echo "CONFIG_SILENT=y" >> .config
+          echo "CONFIG_BUILD_LOG=y" >> .config
+
+          # Run defconfig to fill in missing values
+          make defconfig
+
+          # Show final .config
+          echo "=== Generated .config ==="
+          cat .config
+          echo "========================="
+
+      - name: Prepare GPT inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uboot-op
+
+          if [ "$CONFIG_GPT_TEMPLATE" = "true" ]; then
+            if [ -d "mt798x_gpt/template" ]; then
+              echo "Enable template partition table: copy mt798x_gpt/template/* -> mt798x_gpt/"
+              shopt -s dotglob nullglob
+              cp -af mt798x_gpt/template/* mt798x_gpt/ || true
+            else
+              echo "Warning: mt798x_gpt/template not found, skipping template copy"
+            fi
+          else
+            echo "Template partition table not enabled (GPT_TEMPLATE=false)"
+          fi
+
+      - name: Enable ccache
+        run: |
+          mkdir -p $HOME/.ccache/bin
+          ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-gcc
+          ln -sf $(which ccache) $HOME/.ccache/bin/aarch64-linux-gnu-g++
+          echo "PATH=$HOME/.ccache/bin:$PATH" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-mt798x-gpt-${{ github.sha }}
+          restore-keys: |
+            ccache-mt798x-gpt-
+
+      - name: Build GPT
+        id: gpt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uboot-op
+          chmod +x ./generate_gpt.sh
+          # Use make build target
+          make build 2>&1
+          echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Organize files and rename
+        id: organize
+        if: env.UPLOAD_ARTIFACT == 'true' && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd uboot-op
+
+          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+
+          # Try to timestamp output_gpt files
+          if [ -d "output_gpt" ]; then
+            rename "s/(.*)\.(.*)/\$1_${TIMESTAMP}.\$2/" output_gpt/* || true
+          fi
+
+          mkdir -p upload
+          if [ -d "output_gpt" ]; then
+            cp -r output_gpt/* upload/ || true
+          fi
+
+          # Also try to archive the entire mt798x_gpt directory if it exists, for users who want to see the full layout
+          if [ -d "mt798x_gpt" ]; then
+            tar -czf upload/mt798x_gpt_${TIMESTAMP}.tar.gz mt798x_gpt || true
+          fi
+
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts to Actions
+        uses: actions/upload-artifact@main
+        if: steps.organize.outputs.status == 'success' && success()
+        with:
+          name: ${{ env.FILE_DATE }}-gpt-partition-table
+          path: |
+            uboot-op/upload/*
+
+      - name: Generate release notes
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch release.txt
+
+          echo "- Commit: ${{ github.sha }}" >> release.txt
+          echo "- Source repo: ${{ env.REPO_URL }}" >> release.txt
+          echo "- Branch: ${{ env.REPO_BRANCH }}" >> release.txt
+          if [ "$CONFIG_GPT_TEMPLATE" = "true" ]; then
+            echo "- Template partition table: Enabled" >> release.txt
+          else
+            echo "- Template partition table: Disabled" >> release.txt
+          fi
+          echo "- Build time: ${{ env.FILE_DATE }}" >> release.txt
+
+          echo "" >> release.txt
+          echo "---" >> release.txt
+          echo "" >> release.txt
+          echo "**PLEASE SEE THE README FOR USAGE INSTRUCTIONS AND DISCLAIMERS.**" >> release.txt
+          echo "release_tag=${{ env.FILE_DATE }}-gpt-partition-table" >> $GITHUB_OUTPUT
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Publish to Private Repo Release
+        if: steps.tag.outputs.status == 'success' && success() && env.UPLOAD_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+        run: |
+          set -euo pipefail
+          RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "REPO_TOKEN secret not set, skipping publish"
+            exit 0
+          fi
+          TAG="${{ steps.tag.outputs.release_tag }}"
+          TITLE="${{ env.FILE_DATE }}-gpt-partition-table"
+          echo "Publishing to $RELEASE_REPO release $TAG"
+          gh release create "$TAG" \
+            --repo "$RELEASE_REPO" \
+            --title "$TITLE" \
+            --notes-file release.txt \
+            uboot-op/upload/*
