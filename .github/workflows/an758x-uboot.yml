@@ -45,9 +45,9 @@ on:
         default: 'https://github.com/jfy9606/uboot-op'
         type: string
       REPO_BRANCH:
-        description: 'Repository branch (main contains the unified U-Boot source tree)'
+        description: 'Repository branch (an758x contains the unified U-Boot source tree)'
         required: true
-        default: 'main'
+        default: 'an758x'
         type: string
       pub_release:
         description: 'Publish to GitHub Release'
