@@ -118,7 +118,7 @@ jobs:
            sudo -E apt -qq update
            sudo systemctl stop snapd snapd.socket 2>/dev/null || true
            sudo -E apt -qq -y purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
-           sudo -E apt-mark hold snapd
+           sudo -E apt-mark hold snapd || true
            sudo -E apt -qq -y full-upgrade
            sudo -E apt -qq -y install ack asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
            sudo -E systemctl daemon-reload
