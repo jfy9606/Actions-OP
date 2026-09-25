@@ -8,7 +8,7 @@ on:
       branch:
         description: "Git branch to build"
         required: true
-        default: "ipq50xx-qsdk"
+        default: "ipq-sfe"
         type: string
       target:
         description: "Config to build (name without 'menuconfig-' prefix, or 'all')"
@@ -137,7 +137,7 @@ jobs:
         working-directory: /home/runner/work/Actions-OP/Actions-OP/workdir
         env:
           REPO_URL: "https://x-access-token:${{ env.REPO_TOKEN }}@github.com/jfy9606/immortalwrt/"
-          REPO_BRANCH: "ipq50xx-qsdk"
+          REPO_BRANCH: ${{ inputs.branch }}
         run: |
           df -hT $PWD
           git clone $REPO_URL -b $REPO_BRANCH openwrt
