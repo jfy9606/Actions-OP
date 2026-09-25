@@ -70,14 +70,14 @@ jobs:
         include:
           # --- AN7581 SoC boards ---
           - model: xr1710g
-            defconfig: xr1710g_defconfig
+            defconfig: an7581_econet_xr1710g_defconfig
             artifact_name: xr1710g-chainloader-slot.bin
             needs_slot: true
             needs_chainloader: true
             needs_fip: false
             regression: false
           - model: w1700k
-            defconfig: w1700k_defconfig
+            defconfig: an7581_gemtek_w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
@@ -85,7 +85,7 @@ jobs:
             regression: true
             expected_fsdata: fsdata_w1700k.c
           - model: xg2010g
-            defconfig: xg2010g_defconfig
+            defconfig: an7581_gemtek_xg2010g_defconfig
             artifact_name: u-boot-xg2010g.img
             needs_slot: false
             needs_chainloader: false
@@ -93,7 +93,7 @@ jobs:
             regression: false
             expected_fsdata: fsdata_xg2010g.c
           - model: nokia-xg-040g-md
-            defconfig: an7581_nokia-xg-040g-md_defconfig
+            defconfig: an7581_nokia_xg-040g-md_defconfig
             artifact_name: u-boot-nokia-xg-040g-md.bin
             needs_slot: false
             needs_chainloader: false
