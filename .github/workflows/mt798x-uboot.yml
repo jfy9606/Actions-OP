@@ -143,8 +143,8 @@ jobs:
          sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
          sudo -E apt -qq update
          sudo systemctl stop snapd snapd.socket 2>/dev/null || true
-         sudo -E apt -qq -y purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
-         sudo -E apt-mark hold snapd
+         sudo -E apt -qq -y --allow-change-held-packages purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
+         sudo -E apt-mark hold snapd || true
          sudo -E apt -qq -y full-upgrade
          sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config nodejs npm tar rename
          sudo -E systemctl daemon-reload

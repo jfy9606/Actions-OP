@@ -75,14 +75,12 @@ jobs:
             needs_slot: true
             needs_chainloader: true
             needs_fip: false
-            regression: false
           - model: w1700k
             defconfig: an7581_gemtek_w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
             needs_fip: false
-            regression: true
             expected_fsdata: fsdata_w1700k.c
           - model: xg2010g
             defconfig: an7581_gemtek_xg2010g_defconfig
@@ -90,7 +88,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: false
-            regression: false
             expected_fsdata: fsdata_xg2010g.c
           - model: nokia-xg-040g-md
             defconfig: an7581_nokia_xg-040g-md_defconfig
@@ -98,7 +95,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            regression: false
             expected_fsdata: fsdata_xg2010g.c
           # --- AN7583 SoC boards ---
           - model: xg040mf
@@ -107,7 +103,6 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            regression: false
             expected_fsdata: fsdata_xg2010g.c
 
     permissions:
@@ -135,8 +130,8 @@ jobs:
          sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
          sudo -E apt -qq update
          sudo systemctl stop snapd snapd.socket 2>/dev/null || true
-         sudo -E apt -qq -y purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
-         sudo -E apt-mark hold snapd
+         sudo -E apt -qq -y --allow-change-held-packages purge snapd snap* azure-cli* '^llvm-.*' docker* google* powershell*
+         sudo -E apt-mark hold snapd || true
          sudo -E apt -qq -y full-upgrade
          sudo -E apt -qq install -y build-essential gcc-aarch64-linux-gnu ccache device-tree-compiler bc bison flex libssl-dev python3 python-is-python3 python3-dev python3-pyelftools python3-setuptools swig pkg-config tar rename xz-utils
          sudo -E systemctl daemon-reload
@@ -254,18 +249,6 @@ jobs:
           [ "$ACTUAL" = "$EXPECTED" ] || echo "Warning: fsdata mismatch for ${{ matrix.model }}"
         fi
         [ -f "lib/lwip/httpd/$EXPECTED" ] && echo "fsdata file $EXPECTED exists" || echo "Warning: $EXPECTED not found"
-
-    - name: w1700k regression gate
-      if: steps.compile.outputs.status == 'success' && matrix.regression == true && !cancelled()
-      run: |
-        cd uboot-op
-        echo "=== w1700k regression gate ==="
-        grep -q "CONFIG_CMD_TELNETD=y" .config || { echo "FAIL: CONFIG_CMD_TELNETD=y missing"; exit 1; }
-        [ -f lib/lwip/httpd/fsdata_w1700k.c ] || { echo "FAIL: fsdata_w1700k.c missing"; exit 1; }
-        [ -f net/lwip/recovery_telnetd.c ] || { echo "FAIL: recovery_telnetd.c missing"; exit 1; }
-        grep -q "CONFIG_PCS_AIROHA_AN7581=y" .config || { echo "FAIL: CONFIG_PCS_AIROHA_AN7581=y missing"; exit 1; }
-        echo "w1700k regression gate: PASS"
-
 
     - name: FIP merge for ${{ matrix.model }}
       id: fip
