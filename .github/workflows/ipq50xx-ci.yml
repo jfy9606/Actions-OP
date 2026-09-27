@@ -113,7 +113,7 @@ jobs:
         env:
            DEBIAN_FRONTEND: noninteractive
         run: |
-           sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules /etc/apt/sources.list.d
+           sudo -E rm -rf /usr/local/graalvm/ /usr/local/.ghcup/ /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/android /usr/local/lib/node_modules
            sudo -E apt-mark hold grub-efi-amd64-signed $(dpkg --list | grep '^ii  linux-image' | awk '{print $2}')
            sudo -E apt -qq update
             sudo systemctl stop snapd snapd.socket 2>/dev/null || true
