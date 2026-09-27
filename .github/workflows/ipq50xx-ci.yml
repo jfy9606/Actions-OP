@@ -170,7 +170,7 @@ jobs:
           echo "Building with configuration: $CONFIG_NAME"
           echo "======================================="
 
-          mkdir dl
+          mkdir -p dl
           wget -4 "https://github.com/jfy9606/immortalwrt/releases/download/kernel/linux-5.4-qsdk-11.5.0.5.tar.xz" -O dl/linux-5.4-qsdk-11.5.0.5.tar.xz
 
           cp -f ".github/menuconfig/ipq50xx/$CONFIG_NAME" .config
