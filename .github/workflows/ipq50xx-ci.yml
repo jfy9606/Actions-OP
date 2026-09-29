@@ -13,8 +13,7 @@ on:
       target:
         description: "Config to build (name without 'menuconfig-' prefix, or 'all')"
         required: true
-
-        default: "all"
+        default: "rax3000q"
         type: string
 
 env:
