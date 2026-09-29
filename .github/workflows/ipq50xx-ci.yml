@@ -42,7 +42,7 @@ jobs:
           TARGET="${{ inputs.target }}"
           if [ "$TARGET" = "all" ]; then
             configs=""
-            for f in /tmp/openwrt/.github/menuconfig/ipq50xx/menuconfig-*; do
+            for f in /tmp/openwrt/.github/menuconfig/qualcommax/menuconfig-*; do
               [ -f "$f" ] || continue
               name=$(basename "$f" | sed 's/menuconfig-//')
               configs="$configs,\"$name\""
@@ -170,10 +170,7 @@ jobs:
           echo "Building with configuration: $CONFIG_NAME"
           echo "======================================="
 
-          mkdir -p dl
-          wget -4 "https://github.com/jfy9606/immortalwrt/releases/download/kernel/linux-5.4-qsdk-11.5.0.5.tar.xz" -O dl/linux-5.4-qsdk-11.5.0.5.tar.xz
-
-          cp -f ".github/menuconfig/ipq50xx/$CONFIG_NAME" .config
+          cp -f ".github/menuconfig/qualcommax/$CONFIG_NAME" .config
           make defconfig
           make download -j16
           make -j$(nproc) || make -j1 || make -j1 V=s
