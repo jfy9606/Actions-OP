@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project uboot-op
+# This file is part of the project u-boot
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 name: mt762x-uboot
@@ -87,7 +87,7 @@ on:
       REPO_URL:
         description: 'Source repository'
         required: true
-        default: 'https://github.com/jfy9606/uboot-op'
+        default: 'https://github.com/jfy9606/u-boot'
         type: string
       REPO_BRANCH:
         description: 'Repository branch (auto = mt762x)'
@@ -191,12 +191,12 @@ jobs:
         fi
 
         echo "Using source: $REPO_URL (ref: $REPO_REF)"
-        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" uboot-op
+        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" u-boot
 
-        SOURCE_SHA="$(git -C uboot-op rev-parse HEAD)"
+        SOURCE_SHA="$(git -C u-boot rev-parse HEAD)"
         echo "REPO_BRANCH=$REPO_REF" >> "$GITHUB_ENV"
         echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
-        ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
+        ln -sf /workdir/u-boot $GITHUB_WORKSPACE/u-boot
 
 
     - name: SSH connection management
@@ -215,7 +215,7 @@ jobs:
     - name: Compile
       id: compile
       run: |
-        cd /workdir/uboot-op
+        cd /workdir/u-boot
         mkdir -p archive
         if [ "$CONFIG_MODEL" = "all" ]; then
           for cfg in configs-mt7621/*_defconfig; do
@@ -241,7 +241,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd uboot-op
+        cd u-boot
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
         mkdir -p upload
         if [ -d "archive" ] && ls archive/* >/dev/null 2>&1; then
@@ -280,7 +280,7 @@ jobs:
         RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
       run: |
         set -euo pipefail
-        RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
+        RELEASE_REPO="${RELEASE_REPO:-jfy9606/u-boot}"
         if [ -z "$GH_TOKEN" ]; then
           echo "REPO_TOKEN secret not set, skipping publish"
           exit 0
@@ -292,4 +292,4 @@ jobs:
           --repo "$RELEASE_REPO" \
           --title "$TITLE" \
           --notes-file release.txt \
-          uboot-op/upload/*
+          u-boot/upload/*

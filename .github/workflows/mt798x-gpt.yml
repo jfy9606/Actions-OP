@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project uboot-op
+# This file is part of the project u-boot
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 name: mt798x-gpt
@@ -16,7 +16,7 @@ on:
       REPO_URL:
         description: 'Source repository'
         required: true
-        default: 'https://github.com/jfy9606/uboot-op'
+        default: 'https://github.com/jfy9606/u-boot'
         type: string
       REPO_BRANCH:
         description: 'Repository branch'
@@ -93,8 +93,8 @@ jobs:
           else
             REPO_URL_AUTH="$REPO_URL"
           fi
-          git clone $REPO_URL_AUTH -b $REPO_BRANCH uboot-op
-          ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
+          git clone $REPO_URL_AUTH -b $REPO_BRANCH u-boot
+          ln -sf /workdir/u-boot $GITHUB_WORKSPACE/u-boot
 
           if [ "${{ github.event.inputs.pub_release }}" = "false" ]; then
             echo "UPLOAD_RELEASE=false" >> $GITHUB_ENV
@@ -104,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd uboot-op
+          cd u-boot
 
           # Generate .config for GPT build
           echo "# CONFIG_BUILD_FIP is not set" > .config
@@ -127,7 +127,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd uboot-op
+          cd u-boot
 
           if [ "$CONFIG_GPT_TEMPLATE" = "true" ]; then
             if [ -d "mt798x_gpt/template" ]; then
@@ -162,7 +162,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd uboot-op
+          cd u-boot
           chmod +x ./generate_gpt.sh
           # Use make build target
           make build 2>&1
@@ -175,7 +175,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd uboot-op
+          cd u-boot
 
           TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 
@@ -202,7 +202,7 @@ jobs:
         with:
           name: ${{ env.FILE_DATE }}-gpt-partition-table
           path: |
-            uboot-op/upload/*
+            u-boot/upload/*
 
       - name: Generate release notes
         id: tag
@@ -236,7 +236,7 @@ jobs:
           RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
         run: |
           set -euo pipefail
-          RELEASE_REPO="${RELEASE_REPO:-jfy9606/uboot-op}"
+          RELEASE_REPO="${RELEASE_REPO:-jfy9606/u-boot}"
           if [ -z "$GH_TOKEN" ]; then
             echo "REPO_TOKEN secret not set, skipping publish"
             exit 0
@@ -248,4 +248,4 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$TITLE" \
             --notes-file release.txt \
-            uboot-op/upload/*
+            u-boot/upload/*

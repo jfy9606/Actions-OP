@@ -4,7 +4,7 @@
 #
 # All rights reserved.
 #
-# This file is part of the project uboot-op
+# This file is part of the project u-boot
 # You may not use, copy, modify or distribute this file except in compliance with the license agreement.
 #
 name: mt798x-uboot
@@ -75,7 +75,7 @@ on:
       REPO_URL:
         description: 'Source repository'
         required: true
-        default: 'https://github.com/jfy9606/uboot-op'
+        default: 'https://github.com/jfy9606/u-boot'
         type: string
       REPO_BRANCH:
         description: 'Repository branch'
@@ -97,7 +97,7 @@ on:
 
 env:
   UPLOAD_TAG_NAME: ${{ github.event.inputs.MODEL || github.event.client_payload.MODEL || 'all' }}
-  REPO_URL: ${{ github.event.inputs.REPO_URL || github.event.client_payload.REPO_URL || 'https://github.com/jfy9606/uboot-op' }}
+  REPO_URL: ${{ github.event.inputs.REPO_URL || github.event.client_payload.REPO_URL || 'https://github.com/jfy9606/u-boot' }}
   REPO_BRANCH_INPUT: ${{ github.event.inputs.REPO_BRANCH || github.event.client_payload.REPO_BRANCH || 'auto' }}
   REPO_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN || github.token }}
   FIP_VERSION_INPUT: ${{ github.event.inputs.FIP_VERSION || github.event.client_payload.FIP_VERSION || '2025' }}
@@ -271,19 +271,19 @@ jobs:
         fi
 
         echo "Using source: $REPO_URL (ref: $REPO_REF)"
-        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" uboot-op
+        git clone --depth 1 --branch "$REPO_REF" "$REPO_URL_IN" u-boot
 
-        SOURCE_SHA="$(git -C uboot-op rev-parse HEAD)"
+        SOURCE_SHA="$(git -C u-boot rev-parse HEAD)"
         echo "REPO_BRANCH=$REPO_REF" >> "$GITHUB_ENV"
         echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
-        ln -sf /workdir/uboot-op $GITHUB_WORKSPACE/uboot-op
+        ln -sf /workdir/u-boot $GITHUB_WORKSPACE/u-boot
 
 
     - name: Install failsafe JS dependencies
       shell: bash
       run: |
         set -euo pipefail
-        cd uboot-op
+        cd u-boot
 
         embed_dir="uboot-mtk-20250711/failsafe/embedded"
 
@@ -325,7 +325,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        cd uboot-op
+        cd u-boot
 
         # Create minimal .config in u-boot dir for kconfig tool build
         # (u-boot build system requires .config to exist)
@@ -465,7 +465,7 @@ jobs:
     - name: Parse model lists
       run: |
         set -euo pipefail
-        cd uboot-op
+        cd u-boot
         mkdir -p model_lists
 
         FIP_INPUT="$FIP_VERSION_INPUT"
@@ -535,7 +535,7 @@ jobs:
       id: compile
       run: |
         export CROSS_COMPILE="ccache aarch64-linux-gnu-"
-        cd uboot-op
+        cd u-boot
         mkdir -p output
 
         FIP_INPUT="$FIP_VERSION_INPUT"
@@ -703,7 +703,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: | 
-        cd uboot-op
+        cd u-boot
         # Get current timestamp
         TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
         # Mark custom subnet (append _customnet suffix, then timestamp)
@@ -752,7 +752,7 @@ jobs:
       with:
         name: ${{ env.FILE_DATE }}-${{ env.UPLOAD_TAG_NAME }}
         path: |
-          uboot-op/upload/*
+          u-boot/upload/*
 
     - name: Generate release notes
       id: tag
@@ -826,7 +826,7 @@ jobs:
           env.UPLOAD_RELEASE == 'true'
       env:
         GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.REPO_TOKEN }}
-        RELEASE_REPO: ${{ secrets.RELEASE_REPO || 'jfy9606/uboot-op' }}
+        RELEASE_REPO: ${{ secrets.RELEASE_REPO || 'jfy9606/u-boot' }}
       run: |
         set -euo pipefail
 
@@ -841,7 +841,7 @@ jobs:
           exit 1
         fi
 
-        mapfile -t assets < <(find uboot-op/upload -maxdepth 1 -type f -print)
+        mapfile -t assets < <(find u-boot/upload -maxdepth 1 -type f -print)
         if [ "${#assets[@]}" -eq 0 ]; then
           echo "No release assets found"
           exit 1
