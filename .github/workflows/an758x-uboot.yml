@@ -75,27 +75,30 @@ jobs:
             needs_slot: true
             needs_chainloader: true
             needs_fip: false
+            # 页面由 lib/lwip/httpd/pages/ 的 linker list 嵌入；所有板同一套（bl2 页常驻，
+            # 是否适用由设备运行期 GET /check 的 bl2.ok 决定）
+            webui_pages: 26
           - model: w1700k
             defconfig: an7581_gemtek_w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
             needs_fip: false
-            expected_fsdata: fsdata_w1700k.c
+            webui_pages: 26
           - model: xg2010g
             defconfig: an7581_gemtek_xg2010g_defconfig
             artifact_name: u-boot-xg2010g.img
             needs_slot: false
             needs_chainloader: false
             needs_fip: false
-            expected_fsdata: fsdata_xg2010g.c
+            webui_pages: 26
           - model: nokia-xg-040g-md
             defconfig: an7581_nokia_xg-040g-md_defconfig
             artifact_name: u-boot-nokia-xg-040g-md.bin
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            expected_fsdata: fsdata_xg2010g.c
+            webui_pages: 26
           # --- AN7583 SoC boards ---
           - model: xg040mf
             defconfig: an7583_nokia_xg-040g-mf_defconfig
@@ -103,7 +106,7 @@ jobs:
             needs_slot: false
             needs_chainloader: false
             needs_fip: true
-            expected_fsdata: fsdata_xg2010g.c
+            webui_pages: 26
 
     permissions:
       contents: write
@@ -237,18 +240,59 @@ jobs:
         echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
-    - name: Verify fsdata selection for ${{ matrix.model }}
-      if: steps.compile.outputs.status == 'success' && matrix.expected_fsdata && !cancelled()
-      continue-on-error: true
+    - name: Verify embedded web UI page set for ${{ matrix.model }}
+      if: steps.compile.outputs.status == 'success' && matrix.webui_pages && !cancelled()
       run: |
+        set -euo pipefail
         cd u-boot
-        EXPECTED="${{ matrix.expected_fsdata }}"
-        ACTUAL=$(grep -oP 'HTTPD_FSDATA_FILE\s*[:=]\s*\K.*' lib/lwip/Makefile 2>/dev/null | head -1 | xargs basename 2>/dev/null || true)
-        if [ -n "$ACTUAL" ]; then
-          echo "fsdata: expected=$EXPECTED actual=$ACTUAL"
-          [ "$ACTUAL" = "$EXPECTED" ] || echo "Warning: fsdata mismatch for ${{ matrix.model }}"
-        fi
-        [ -f "lib/lwip/httpd/$EXPECTED" ] && echo "fsdata file $EXPECTED exists" || echo "Warning: $EXPECTED not found"
+
+        # 静态页面以“一页一对象 + linker list”嵌入，条目符号名为 fsdata_ulist_<页>。
+        # 校验三件事：页数、bl2 页有无、以及 .config 里的开关是否与矩阵声明一致，
+        # 防止某块板子悄悄用到另一块板子的页面集。
+        [ -f u-boot ] || { echo "::error::u-boot ELF not found"; exit 1; }
+
+        # 一次性取符号表：set -o pipefail 下 nm | grep -q 会被 grep 提前关闭管道而误判
+        syms="$(aarch64-linux-gnu-nm u-boot)"
+
+        pages="$(printf '%s\n' "$syms" | grep -c 'fsdata_ulist_' || true)"
+        echo "embedded pages: $pages (expected ${{ matrix.webui_pages }})"
+        [ "$pages" = "${{ matrix.webui_pages }}" ] || {
+          echo "::error::web UI page count mismatch for ${{ matrix.model }}"; exit 1; }
+
+        have_bl2=false
+        case "$syms" in
+          *fsdata_ulist_bl2_html*) have_bl2=true ;;
+        esac
+        # bl2 页现在对所有板都嵌入；板级差异由运行期探测处理，不在镜像里体现
+        echo "bl2 page embedded: $have_bl2"
+        [ "$have_bl2" = "true" ] || {
+          echo "::error::bl2 page missing for ${{ matrix.model }}"; exit 1; }
+
+    - name: Check web UI contract for ${{ matrix.model }}
+      if: steps.compile.outputs.status == 'success' && matrix.model == 'w1700k' && !cancelled()
+      run: |
+        set -euo pipefail
+        cd u-boot
+
+        # 硬门禁：页面发出的每个 URI 都得有真后端路由，也不能引用未嵌入的页。
+        out=$(python3 lib/lwip/httpd/tools/check_page_uris.py lib/lwip/httpd/htdocs) || {
+          echo "$out"
+          echo "::error::web UI calls an URI with no route, or a page that is not embedded"
+          exit 1
+        }
+        echo "$out"
+
+        # 这条检查自身曾两次静默失效（只认 fetch()，不认 url: / location=），
+        # 所以还要断言它确实采到了预期量级的调用点。
+        called=$(sed -n 's/.*URIs called: \([0-9]*\).*/\1/p' <<< "$out")
+        [ "${called:-0}" -ge 30 ] || {
+          echo "::error::URI scanner found only ${called:-0} call sites; the checker broke, not the UI"
+          exit 1
+        }
+
+        # 参考信息：参数名与响应字段层面的已知存量差异，暂不阻断。
+        python3 lib/lwip/httpd/tools/check_page_params.py lib/lwip/httpd/htdocs || true
+        python3 lib/lwip/httpd/tools/check_page_json.py lib/lwip/httpd/htdocs || true
 
     - name: FIP merge for ${{ matrix.model }}
       id: fip
