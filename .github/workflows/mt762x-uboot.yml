@@ -204,6 +204,12 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
+    - name: Download OpenWrt toolchain
+      run: |
+        cd /workdir
+        wget -O - https://github.com/DragonBluep/uboot-mt7621/releases/download/20230517/openwrt-toolchain-ramips-mt7621_gcc-12.3.0_musl.Linux-x86_64.tar.xz \
+          | tar --xz -xf -
+
     - name: Enable ccache
       run: |
         echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
@@ -273,7 +279,7 @@ jobs:
         echo "- Target model: ${{ env.UPLOAD_TAG_NAME }}" >> release.txt
         echo "- Source repo: ${{ env.REPO_URL }}" >> release.txt
         echo "- Branch: ${{ env.REPO_BRANCH }}" >> release.txt
-        echo "- Toolchain: bundled OpenWrt GCC 13.4.0 musl (toolchain/)" >> release.txt
+        echo "- Toolchain: OpenWrt GCC 12.3.0 musl (downloaded)" >> release.txt
         echo "- Build time: ${{ env.FILE_DATE }}" >> release.txt
         echo "" >> release.txt
         echo "---" >> release.txt
