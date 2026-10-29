@@ -12,11 +12,11 @@
 # (no OpenWrt build system dependency).
 #
 # Extended for AN7581 + AN7583 multi-board builds with FIP auto-merge:
-#   - w1700k / xr1710g / xg2010g / nokia-xg-040g-md  (AN7581 SoC)
+#   - w1700k / nokia-xg-040g-md                      (AN7581 SoC)
 #   - xg040mf                                        (AN7583 SoC)
-# Boards requiring chainloader packaging (w1700k, xr1710g) use
-# chainloader/build-uboot-image.sh; other boards ship u-boot.bin / u-boot.img
-# directly as the release artifact.
+# w1700k uses chainloader/build-uboot-image.sh to package its image;
+# the other boards ship u-boot.bin / u-boot.img directly as the release
+# artifact.
 # Boards needing FIP (xg040mf, nokia-xg-040g-md) get BL31+U-Boot merged
 # via scripts/bl31-fetch.sh + scripts/fip-merge.sh (LZMA + fiptool create).
 #
@@ -28,15 +28,13 @@ on:
   workflow_dispatch:
     inputs:
       MODEL:
-        description: 'Model selection (w1700k, xr1710g, xg2010g, nokia-xg-040g-md, xg040mf, or all)'
+        description: 'Model selection (w1700k, nokia-xg-040g-md, xg040mf, or all)'
         required: true
         default: 'all'
         type: choice
         options:
           - all
           - w1700k
-          - xr1710g
-          - xg2010g
           - nokia-xg-040g-md
           - xg040mf
       REPO_URL:
@@ -69,27 +67,13 @@ jobs:
       matrix:
         include:
           # --- AN7581 SoC boards ---
-          - model: xr1710g
-            defconfig: an7581_econet_xr1710g_defconfig
-            artifact_name: xr1710g-chainloader-slot.bin
-            needs_slot: true
-            needs_chainloader: true
-            needs_fip: false
-            # 页面由 lib/lwip/httpd/pages/ 的 linker list 嵌入；所有板同一套（bl2 页常驻，
-            # 是否适用由设备运行期 GET /check 的 bl2.ok 决定）
-            webui_pages: 26
+          # 页面由 lib/lwip/httpd/pages/ 的 linker list 嵌入；所有板同一套（26 页，
+          # bl2 常驻，是否适用由设备运行期 GET /sysinfo 的 caps.bl2 决定）
           - model: w1700k
             defconfig: an7581_gemtek_w1700k_defconfig
             artifact_name: u-boot-w1700k.itb
             needs_slot: false
             needs_chainloader: true
-            needs_fip: false
-            webui_pages: 26
-          - model: xg2010g
-            defconfig: an7581_gemtek_xg2010g_defconfig
-            artifact_name: u-boot-xg2010g.img
-            needs_slot: false
-            needs_chainloader: false
             needs_fip: false
             webui_pages: 26
           - model: nokia-xg-040g-md
@@ -346,7 +330,7 @@ jobs:
         echo "" >> release.txt
         echo "---" >> release.txt
         echo "" >> release.txt
-        echo "**AN758x SoC multi-board U-Boot build (W1700K / XR1710G / XG2010G / Nokia-XG-040G-MD / XG-040G-MF).**" >> release.txt
+        echo "**AN758x SoC multi-board U-Boot build (W1700K / Nokia-XG-040G-MD / XG-040G-MF).**" >> release.txt
         echo "release_tag=${{ env.FILE_DATE }}-an758x-${{ matrix.model }}" >> "$GITHUB_OUTPUT"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
